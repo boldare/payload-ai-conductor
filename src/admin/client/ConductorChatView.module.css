@@ -1,0 +1,275 @@
+.markdown p {
+  margin: 0 0 12px;
+}
+
+.markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0 0 12px;
+  padding-left: 24px;
+}
+
+.markdown li {
+  margin-bottom: 4px;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+}
+
+.markdown h1:first-child,
+.markdown h2:first-child,
+.markdown h3:first-child,
+.markdown h4:first-child {
+  margin-top: 0;
+}
+
+.markdown a {
+  color: var(--theme-success-500);
+}
+
+.markdown blockquote {
+  margin: 0 0 12px;
+  padding-left: 12px;
+  border-left: 3px solid var(--theme-border-color);
+  color: var(--theme-elevation-600);
+}
+
+.markdown code {
+  background: var(--theme-elevation-150);
+  color: var(--theme-text);
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-size: 0.9em;
+}
+
+.markdown pre {
+  background: var(--theme-elevation-150);
+  color: var(--theme-text);
+  border-radius: 4px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 0 0 12px;
+}
+
+.markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown table {
+  border-collapse: collapse;
+  margin: 0 0 12px;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--theme-border-color);
+  padding: 4px 8px;
+}
+
+.toolCard {
+  background: var(--theme-elevation-50);
+  border-radius: 4px;
+  margin-block: 8px;
+  padding: 8px;
+}
+
+.toolMeta {
+  color: var(--theme-elevation-500);
+}
+
+.toolOutput {
+  background: var(--theme-elevation-150);
+  color: var(--theme-text);
+  border-radius: 4px;
+  padding: 8px;
+  margin-top: 8px;
+  overflow-x: auto;
+}
+
+.toolSummary {
+  cursor: pointer;
+}
+
+.errorText {
+  color: var(--theme-error-500);
+}
+
+.contextLine {
+  color: var(--theme-elevation-500);
+}
+
+.messageImage {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 4px;
+  margin-block: 8px;
+}
+
+.attachmentList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.attachmentChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--theme-elevation-50);
+  border: 1px solid var(--theme-border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.9em;
+}
+
+.attachmentThumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 2px;
+  object-fit: cover;
+}
+
+.actionButton {
+  display: inline-block;
+  border: 1px solid var(--theme-border-color);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.actionButton:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.formFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.sendControls {
+  display: flex;
+  gap: 8px;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  /* Payload's own admin chrome (nav/header) isn't height-bounded, so without this the whole
+     page scrolls instead of just the message list — pin our view to the viewport instead. */
+  height: calc(100vh - var(--app-header-height));
+  overflow: hidden;
+}
+
+.header {
+  flex-shrink: 0;
+}
+
+.messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.footer {
+  flex-shrink: 0;
+}
+
+.messageRow {
+  display: flex;
+  margin-block: 10px;
+}
+
+.messageRowUser {
+  justify-content: flex-end;
+}
+
+.messageRowAssistant {
+  justify-content: flex-start;
+}
+
+.bubble {
+  max-width: 85%;
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+
+.bubbleUser {
+  background: var(--theme-success-500);
+  border-bottom-right-radius: 3px;
+  color: var(--theme-elevation-0);
+}
+
+.bubbleAssistant {
+  background: var(--theme-elevation-100);
+  border-bottom-left-radius: 3px;
+  color: var(--theme-text);
+}
+
+.messageLabel {
+  color: var(--theme-elevation-500);
+  font-size: 0.75em;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.bubbleUser .messageLabel {
+  /* bubbleUser's background is a fixed brand color regardless of light/dark theme, so its
+     label needs a fixed light color too rather than the theme-flipping elevation scale. */
+  color: rgb(255 255 255 / 80%);
+}
+
+.thinkingDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.thinkingDots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+  animation: thinkingBounce 1.2s ease-in-out infinite both;
+}
+
+.thinkingDots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.thinkingDots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes thinkingBounce {
+  0%,
+  80%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

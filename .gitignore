@@ -42,9 +42,14 @@ next-env.d.ts
 .env
 
 /dev/media
+/dev/*.db
+/dev/*.db-*
 
 # Playwright
 /test-results/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Claude Code harness state
+.omc/

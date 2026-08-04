@@ -18,6 +18,10 @@ export default defineConfig(() => {
     ],
     test: {
       environment: 'node',
+      exclude: ['**/node_modules/**', '**/e2e.spec.ts'],
+      // dev/*.int.spec.ts files share one sqlite file (dev/test.db); running them
+      // in parallel causes SQLITE_BUSY lock contention across worker processes.
+      fileParallelism: false,
       hookTimeout: 30_000,
       testTimeout: 30_000,
     },

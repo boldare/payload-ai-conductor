@@ -1,1 +1,1 @@
-export { BeforeDashboardClient } from '../components/BeforeDashboardClient.js'
+export { ConductorChatView } from '../admin/client/ConductorChatView.js'

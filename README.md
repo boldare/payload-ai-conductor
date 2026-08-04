@@ -1,218 +1,198 @@
-# Payload Plugin Template
+<div align="center">
 
-A template repo to create a [Payload CMS](https://payloadcms.com) plugin.
+# AI Conductor
 
-Payload is built with a robust infrastructure intended to support Plugins with ease. This provides a simple, modular, and reusable way for developers to extend the core capabilities of Payload.
+**Compose and edit Payload pages by chatting — grounded in your real block library, gated by your explicit approval.**
 
-To build your own Payload plugin, all you need is:
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Payload](https://img.shields.io/badge/payload-3.x-black.svg)](https://payloadcms.com)
+[![Node](https://img.shields.io/badge/node-%E2%89%A520.9-green.svg)](package.json)
 
-- An understanding of the basic Payload concepts
-- And some JavaScript/Typescript experience
+</div>
 
-## Background
+---
 
-Here is a short recap on how to integrate plugins with Payload, to learn more visit the [plugin overview page](https://payloadcms.com/docs/plugins/overview).
+## Why this exists
 
-### How to install a plugin
+Most "AI page builder" demos fall apart in production for two reasons: the agent invents fields, blocks, or IDs
+that don't exist — and it writes to your database before anyone's looked at what it's doing.
 
-To install any plugin, simply add it to your payload.config() in the Plugin array.
+AI Conductor fixes both. Every proposal is built from your **real, live schema**, so the agent can only use blocks
+and fields that actually exist. And it never touches your database until a human explicitly approves. The same
+grounded, approval-gated tool layer works two ways: as a **chat panel inside your Payload admin**, and as a
+**standalone [MCP](https://modelcontextprotocol.io) server** for external agents like Claude Desktop and Claude Code.
+
+## How it works
+
+1. **Ask** — describe the page or edit you want, in plain language.
+2. **Ground** — the agent inspects your actual collections and block schemas. No guessing.
+3. **Propose** — it drafts a layout and shows you exactly what it would write.
+4. **Approve** — you accept, revise, or reject. Nothing is written until you say so.
+
+## Highlights
+
+- 🧩 **Schema-grounded** — every block, field, and relationship ID is checked against your real config.
+- ✅ **Propose → approve** — writes only happen after explicit human sign-off, in chat or over MCP.
+- 🔌 **Zero-touch adoption** — works on any collection with a `blocks` field, no schema changes required.
+- 🔑 **BYOK, model-agnostic** — bring your own Anthropic or OpenAI key, from the admin UI or env vars.
+- 📎 **Attachments** — drop in a reference image for a block, or a brief for context — the agent can use both.
+- 🕵️ **Debug mode** — tool-call noise stays hidden by default, one toggle away when you want to see everything.
+- 📜 **Audit trail** — every applied change and conversation is recorded, per user.
+- 🌐 **MCP included** — the same tools, exposed to Claude Desktop, Claude Code, or any MCP client.
+
+## Quick start
+
+**1. Install**
+
+```sh
+pnpm add payload-ai-conductor
+```
+
+**2. Register the plugin**
 
 ```ts
-import myPlugin from 'my-plugin'
+import { buildConfig } from 'payload'
+import { payloadAiConductor } from 'payload-ai-conductor'
 
-export const config = buildConfig({
+export default buildConfig({
   plugins: [
-    // You can pass options to the plugin
-    myPlugin({
-      enabled: true,
+    payloadAiConductor({
+      collections: ['pages'], // optional — omit to auto-discover every collection with a `blocks` field
     }),
   ],
 })
 ```
 
-### Initialization
+**3. Regenerate your types** (however you normally do it)
 
-The initialization process goes in the following order:
+```sh
+pnpm payload generate:types
+```
 
-1. Incoming config is validated
-2. **Plugins execute**
-3. Default options are integrated
-4. Sanitization cleans and validates data
-5. Final config gets initialized
+**4. Set a model key** — either fill in the **Settings** screen now in your admin nav, or use env vars:
 
-## Building the Plugin
+```sh
+AI_CONDUCTOR_PROVIDER=anthropic
+AI_CONDUCTOR_API_KEY=sk-ant-...
+AI_CONDUCTOR_MODEL=claude-sonnet-5
+```
 
-When you build a plugin, you are purely building a feature for your project and then abstracting it outside of the project.
+Open **AI Conductor** in your admin nav — you're chatting.
 
-### Template Files
+> **Lock down the Settings screen.** That screen holds your decrypted API key. Without a `settingsAccess`
+> rule, Payload's own default applies — *any logged-in user*, not just admins:
+>
+> ```ts
+> payloadAiConductor({
+>   settingsAccess: ({ req }) => req.user?.role === 'admin', // match your own role check
+> })
+> ```
 
-In the Payload [plugin template](https://github.com/payloadcms/payload/tree/3.x/templates/plugin), you will see a common file structure that is used across all plugins:
+## Teach it your blocks
 
-1. root folder
-2. /src folder
-3. /dev folder
+Descriptions are optional, but they make proposals sharper. Pick whichever fits:
 
-#### Root
-
-In the root folder, you will see various files that relate to the configuration of the plugin. We set up our environment in a similar manner in Payload core and across other projects, so hopefully these will look familiar:
-
-- **README**.md\* - This contains instructions on how to use the template. When you are ready, update this to contain instructions on how to use your Plugin.
-- **package**.json\* - Contains necessary scripts and dependencies. Overwrite the metadata in this file to describe your Plugin.
-- .**eslint**.config.js - Eslint configuration for reporting on problematic patterns.
-- .**gitignore** - List specific untracked files to omit from Git.
-- .**prettierrc**.json - Configuration for Prettier code formatting.
-- **tsconfig**.json - Configures the compiler options for TypeScript
-- .**swcrc** - Configuration for SWC, a fast compiler that transpiles and bundles TypeScript.
-- **vitest**.config.js - Config file for Vitest, defining how tests are run and how modules are resolved
-
-**IMPORTANT\***: You will need to modify these files.
-
-#### Dev
-
-In the dev folder, you’ll find a basic payload project, created with `npx create-payload-app` and the blank template.
-
-**IMPORTANT**: Make a copy of the `.env.example` file and rename it to `.env`. Update the `DATABASE_URL` to match the database you are using and your plugin name. Update `PAYLOAD_SECRET` to a unique string.
-**You will not be able to run `pnpm/yarn dev` until you have created this `.env` file.**
-
-`myPlugin` has already been added to the `payload.config()` file in this project.
+**Inline**, next to the block definition:
 
 ```ts
-plugins: [
-  myPlugin({
-    collections: {
-      posts: true,
+export const CallToAction: Block = {
+  slug: 'cta',
+  custom: {
+    aiConductor: {
+      description: 'A prominent call-to-action banner. Use mid-page, not at the top.',
+      examples: [{ heading: 'Ready to try it?', buttonLabel: 'Start free', buttonHref: '/signup' }],
     },
-  }),
-]
+  },
+  fields: [
+    /* ... */
+  ],
+}
 ```
 
-Later when you rename the plugin or add additional options, **make sure to update it here**.
-
-You may wish to add collections or expand the test project depending on the purpose of your plugin. Just make sure to keep this dev environment as simplified as possible - users should be able to install your plugin without additional configuration required.
-
-When you’re ready to start development, initiate the project with `pnpm/npm/yarn dev` and pull up [http://localhost:3000](http://localhost:3000) in your browser.
-
-#### Src
-
-Now that we have our environment setup and we have a dev project ready to - it’s time to build the plugin!
-
-**index.ts**
-
-The essence of a Payload plugin is simply to extend the payload config - and that is exactly what we are doing in this file.
+**Markdown**, with zero changes to existing block files:
 
 ```ts
-export const myPlugin =
-  (pluginOptions: MyPluginConfig) =>
-  (config: Config): Config => {
-    // do cool stuff with the config here
+payloadAiConductor({ blocksDir: path.resolve(dirname, 'block-docs') }) // looks up ./block-docs/<slug>.md
+```
 
-    return config
+```md
+---
+examples:
+  - heading: 'Ready to try it?'
+    buttonLabel: 'Start free'
+---
+
+A prominent call-to-action banner. Use mid-page, not at the top.
+```
+
+## Using it
+
+**In the admin** — click **AI Conductor** in the nav, or **Ask AI Conductor** on any document's edit view for
+page-scoped context. Attach an image to use it directly in a block, or a file just for context.
+
+**Over MCP** — point any MCP client at your site, authenticated as a restricted (non-admin) Payload user:
+
+```json
+{
+  "mcpServers": {
+    "ai-conductor": {
+      "url": "https://your-site.example.com/api/plugin/ai-conductor/mcp",
+      "headers": { "Authorization": "users API-Key YOUR_API_KEY" }
+    }
   }
-```
-
-First, we receive the existing payload config along with any plugin options.
-
-From here, you can extend the config as you wish.
-
-Finally, you return the config and that is it!
-
-##### Spread Syntax
-
-Spread syntax (or the spread operator) is a feature in JavaScript that uses the dot notation **(...)** to spread elements from arrays, strings, or objects into various contexts.
-
-We are going to use spread syntax to allow us to add data to existing arrays without losing the existing data. It is crucial to spread the existing data correctly – else this can cause adverse behavior and conflicts with Payload config and other plugins.
-
-Let’s say you want to build a plugin that adds a new collection:
-
-```ts
-config.collections = [
-  ...(config.collections || []),
-  // Add additional collections here
-]
-```
-
-First we spread the `config.collections` to ensure that we don’t lose the existing collections, then you can add any additional collections just as you would in a regular payload config.
-
-This same logic is applied to other properties like admin, hooks, globals:
-
-```ts
-config.globals = [
-  ...(config.globals || []),
-  // Add additional globals here
-]
-
-config.hooks = {
-  ...(incomingConfig.hooks || {}),
-  // Add additional hooks here
 }
 ```
 
-Some properties will be slightly different to extend, for instance the onInit property:
+Exposed tools: `list_collections`, `get_collection_schema`, `list_blocks`, `get_block_schema`, `search_documents`,
+`propose_layout`, `revise_proposal`, `apply_proposal`.
 
-```ts
-import { onInitExtension } from './onInitExtension' // example file
+## Guardrails
 
-config.onInit = async (payload) => {
-  if (incomingConfig.onInit) await incomingConfig.onInit(payload)
-  // Add additional onInit code by defining an onInitExtension function
-  onInitExtension(pluginOptions, payload)
-}
+- `apply_proposal` is the only tool that writes — only after validation, and, in chat, only after your approval.
+- `maxSteps` / `timeoutMs` bound how long and how far a single turn can run.
+- Debug mode is off by default; a pending approval is always shown regardless of that setting.
+
+## Plugin options
+
+| Option           | Type                                           | Description                                                                        |
+| ---------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `collections`    | `string[]`                                       | Restrict AI Conductor to specific collections. Defaults to every `blocks`-field collection. |
+| `blocksDir`      | `string`                                         | Directory to look up `<slug>.md` docs by convention.                               |
+| `blockDocs`      | `Array<{ slug: string; path: string }>`          | Explicit markdown doc paths for specific block slugs.                              |
+| `maxSteps`       | `number`                                         | Default max agent steps per chat turn (overridable from Settings).                 |
+| `getModelConfig` | `(req) => ModelConfig \| Promise<ModelConfig>`   | Fully custom BYOK resolution, taking priority over Settings and env vars.           |
+| `settingsAccess` | `Access`                                         | Who can view/edit the Settings screen (and its decrypted API key). Defaults to Payload's own default — any logged-in user — so set this for any real deployment. |
+| `disabled`       | `boolean`                                        | Disable the plugin without removing it from your config.                           |
+
+## Local development
+
+```sh
+pnpm install
+cp dev/.env.example dev/.env   # set PAYLOAD_SECRET
+pnpm dev                       # http://localhost:3400/admin
 ```
 
-If you wish to add to the onInit, you must include the **async/await**. We don’t use spread syntax in this case, instead you must await the existing `onInit` before running additional functionality.
+`dev/` is a throwaway Payload install for developing the plugin itself — a small reference block library
+(Hero, RichText, CTA, Grid, Testimonial) plus a public page-preview route.
 
-In the template, we have stubbed out some addition `onInit` actions that seeds in a document to the `plugin-collection`, you can use this as a base point to add more actions - and if not needed, feel free to delete it.
-
-##### Types.ts
-
-If your plugin has options, you should define and provide types for these options.
-
-```ts
-export type MyPluginConfig = {
-  /**
-   * List of collections to add a custom field
-   */
-  collections?: Partial<Record<CollectionSlug, true>>
-  /**
-   * Disable the plugin
-   */
-  disabled?: boolean
-}
+```sh
+pnpm lint
+pnpm test:int   # vitest — unit + integration
+pnpm test:e2e   # playwright — admin UI end to end
 ```
 
-If possible, include JSDoc comments to describe the options and their types. This allows a developer to see details about the options in their editor.
+`dev/eval.int.spec.ts` runs the real agent loop against a live model with an LLM-judge rubric. It needs
+`AI_CONDUCTOR_PROVIDER`/`AI_CONDUCTOR_API_KEY`/`AI_CONDUCTOR_MODEL` and skips itself otherwise, so the rest of the
+suite stays green without a key.
 
-##### Testing
+## License
 
-Having a test suite for your plugin is essential to ensure quality and stability. **Vitest** is a fast, modern testing framework that works seamlessly with Vite and supports TypeScript out of the box.
+MIT
 
-Vitest organizes tests into test suites and cases, similar to other testing frameworks. We recommend creating individual tests based on the expected behavior of your plugin from start to finish.
+---
 
-Writing tests with Vitest is very straightforward, and you can learn more about how it works in the [Vitest documentation.](https://vitest.dev/)
+<div align="center">
 
-For this template, we stubbed out `int.spec.ts` in the `dev` folder where you can write your tests.
+creaAIted with ❤️ at Boldare
 
-```ts
-describe('Plugin tests', () => {
-  // Create tests to ensure expected behavior from the plugin
-  it('some condition that must be met', () => {
-   // Write your test logic here
-   expect(...)
-  })
-})
-```
-
-## Best practices
-
-With this tutorial and the plugin template, you should have everything you need to start building your own plugin.
-In addition to the setup, here are other best practices aim we follow:
-
-- **Providing an enable / disable option:** For a better user experience, provide a way to disable the plugin without uninstalling it. This is especially important if your plugin adds additional webpack aliases, this will allow you to still let the webpack run to prevent errors.
-- **Include tests in your GitHub CI workflow**: If you’ve configured tests for your package, integrate them into your workflow to run the tests each time you commit to the plugin repository. Learn more about [how to configure tests into your GitHub CI workflow.](https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs)
-- **Publish your finished plugin to NPM**: The best way to share and allow others to use your plugin once it is complete is to publish an NPM package. This process is straightforward and well documented, find out more [creating and publishing a NPM package here.](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages/).
-- **Add payload-plugin topic tag**: Apply the tag **payload-plugin **to your GitHub repository. This will boost the visibility of your plugin and ensure it gets listed with [existing payload plugins](https://github.com/topics/payload-plugin).
-- **Use [Semantic Versioning](https://semver.org/) (SemVar)** - With the SemVar system you release version numbers that reflect the nature of changes (major, minor, patch). Ensure all major versions reference their Payload compatibility.
-
-# Questions
-
-Please contact [Payload](mailto:dev@payloadcms.com) with any questions about using this plugin template.
+</div>

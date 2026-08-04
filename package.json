@@ -1,7 +1,18 @@
 {
   "name": "payload-ai-conductor",
   "version": "1.0.0",
-  "description": "A blank template to get started with Payload 3.0",
+  "description": "Compose and edit Payload CMS pages through a chat agent grounded in your block library — with an in-panel BYOK chat and a standalone MCP server, both backed by the same propose-then-approve tool layer.",
+  "keywords": [
+    "payload",
+    "payload-plugin",
+    "payloadcms",
+    "ai",
+    "agent",
+    "mcp",
+    "model-context-protocol",
+    "chatbot",
+    "cms"
+  ],
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -29,30 +40,31 @@
   "scripts": {
     "build": "pnpm copyfiles && pnpm build:types && pnpm build:swc",
     "build:swc": "swc ./src -d ./dist --config-file .swcrc --strip-leading-paths",
-    "build:types": "tsc --outDir dist --rootDir ./src",
+    "build:types": "tsc --outDir dist --rootDir ./src -p tsconfig.build.json",
     "clean": "rimraf {dist,*.tsbuildinfo}",
     "copyfiles": "copyfiles -u 1 \"src/**/*.{html,css,scss,ttf,woff,woff2,eot,svg,jpg,png,json}\" dist/",
-    "dev": "next dev dev --turbo",
+    "dev": "next dev dev --turbo -p 3400",
     "dev:generate-importmap": "pnpm dev:payload generate:importmap",
     "dev:generate-types": "pnpm dev:payload generate:types",
     "dev:payload": "cross-env PAYLOAD_CONFIG_PATH=./dev/payload.config.ts payload",
     "generate:importmap": "pnpm dev:generate-importmap",
     "generate:types": "pnpm dev:generate-types",
-    "lint": "eslint",
-    "lint:fix": "eslint ./src --fix",
+    "lint": "cross-env NODE_OPTIONS=--max-old-space-size=8192 eslint ./src",
+    "lint:fix": "cross-env NODE_OPTIONS=--max-old-space-size=8192 eslint ./src --fix",
+    "pretest:e2e": "rimraf dev/dev.db dev/dev.db-*",
+    "pretest:int": "rimraf dev/test.db dev/test.db-*",
     "test": "pnpm test:int && pnpm test:e2e",
     "test:e2e": "playwright test",
-    "test:int": "vitest"
+    "test:int": "vitest run"
   },
   "devDependencies": {
+    "@ai-sdk/provider": "4.0.3",
     "@eslint/eslintrc": "^3.2.0",
-    "@payloadcms/db-mongodb": "3.84.1",
-    "@payloadcms/db-postgres": "3.84.1",
-    "@payloadcms/db-sqlite": "3.84.1",
+    "@payloadcms/db-sqlite": "3.86.0",
     "@payloadcms/eslint-config": "3.28.0",
-    "@payloadcms/next": "3.84.1",
-    "@payloadcms/richtext-lexical": "3.84.1",
-    "@payloadcms/ui": "3.84.1",
+    "@payloadcms/next": "3.86.0",
+    "@payloadcms/richtext-lexical": "3.86.0",
+    "@payloadcms/ui": "3.86.0",
     "@playwright/test": "1.58.2",
     "@swc-node/register": "1.10.9",
     "@swc/cli": "0.6.0",
@@ -64,10 +76,9 @@
     "eslint": "^9.23.0",
     "eslint-config-next": "16.2.6",
     "graphql": "^16.8.1",
-    "mongodb-memory-server": "10.1.4",
     "next": "16.2.6",
     "open": "^10.1.0",
-    "payload": "3.84.1",
+    "payload": "3.86.0",
     "prettier": "^3.4.2",
     "qs-esm": "8.0.1",
     "react": "19.2.6",
@@ -80,10 +91,12 @@
     "vitest": "4.0.18"
   },
   "peerDependencies": {
-    "payload": "^3.84.1"
+    "@payloadcms/next": "^3.86.0",
+    "@payloadcms/ui": "^3.86.0",
+    "payload": "^3.86.0"
   },
   "engines": {
-    "node": "^18.20.2 || >=20.9.0",
+    "node": ">=20.9.0",
     "pnpm": "^9 || ^10 || ^11"
   },
   "publishConfig": {
@@ -111,9 +124,21 @@
     "onlyBuiltDependencies": [
       "sharp",
       "esbuild",
-      "unrs-resolver"
+      "unrs-resolver",
+      "@swc/core"
     ]
   },
   "registry": "https://registry.npmjs.org/",
-  "dependencies": {}
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.12",
+    "@ai-sdk/openai": "^4.0.11",
+    "@ai-sdk/react": "^4.0.23",
+    "@modelcontextprotocol/server": "2.0.0-beta.3",
+    "ai": "^7.0.22",
+    "gray-matter": "^4.0.3",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zod": "^4.2.0"
+  },
+  "packageManager": "pnpm@9.15.9+sha512.68046141893c66fad01c079231128e9afb89ef87e2691d69e4d40eee228988295fd4682181bae55b58418c3a253bde65a505ec7c5f9403ece5cc3cd37dcf2531"
 }
