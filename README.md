@@ -188,11 +188,3 @@ suite stays green without a key.
 ## License
 
 MIT
-
----
-
-<div align="center">
-
-creaAIted with ❤️ at Boldare
-
-</div>
