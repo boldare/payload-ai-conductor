@@ -13,6 +13,14 @@
     "chatbot",
     "cms"
   ],
+  "homepage": "https://github.com/boldare/payload-ai-conductor#readme",
+  "bugs": {
+    "url": "https://github.com/boldare/payload-ai-conductor/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/boldare/payload-ai-conductor.git"
+  },
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -51,11 +59,22 @@
     "generate:types": "pnpm dev:generate-types",
     "lint": "cross-env NODE_OPTIONS=--max-old-space-size=8192 eslint ./src",
     "lint:fix": "cross-env NODE_OPTIONS=--max-old-space-size=8192 eslint ./src --fix",
-    "pretest:e2e": "rimraf dev/dev.db dev/dev.db-*",
-    "pretest:int": "rimraf dev/test.db dev/test.db-*",
     "test": "pnpm test:int && pnpm test:e2e",
+    "pretest:e2e": "rimraf dev/dev.db dev/dev.db-*",
     "test:e2e": "playwright test",
+    "pretest:int": "rimraf dev/test.db dev/test.db-*",
     "test:int": "vitest run"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.12",
+    "@ai-sdk/openai": "^4.0.11",
+    "@ai-sdk/react": "^4.0.23",
+    "@modelcontextprotocol/server": "2.0.0-beta.3",
+    "ai": "^7.0.22",
+    "gray-matter": "^4.0.3",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zod": "^4.2.0"
   },
   "devDependencies": {
     "@ai-sdk/provider": "4.0.3",
@@ -95,6 +114,7 @@
     "@payloadcms/ui": "^3.86.0",
     "payload": "^3.86.0"
   },
+  "packageManager": "pnpm@9.15.9+sha512.68046141893c66fad01c079231128e9afb89ef87e2691d69e4d40eee228988295fd4682181bae55b58418c3a253bde65a505ec7c5f9403ece5cc3cd37dcf2531",
   "engines": {
     "node": ">=20.9.0",
     "pnpm": "^9 || ^10 || ^11"
@@ -128,17 +148,5 @@
       "@swc/core"
     ]
   },
-  "registry": "https://registry.npmjs.org/",
-  "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.12",
-    "@ai-sdk/openai": "^4.0.11",
-    "@ai-sdk/react": "^4.0.23",
-    "@modelcontextprotocol/server": "2.0.0-beta.3",
-    "ai": "^7.0.22",
-    "gray-matter": "^4.0.3",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "zod": "^4.2.0"
-  },
-  "packageManager": "pnpm@9.15.9+sha512.68046141893c66fad01c079231128e9afb89ef87e2691d69e4d40eee228988295fd4682181bae55b58418c3a253bde65a505ec7c5f9403ece5cc3cd37dcf2531"
+  "registry": "https://registry.npmjs.org/"
 }
