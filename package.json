@@ -81,7 +81,7 @@
     "@eslint/eslintrc": "^3.2.0",
     "@payloadcms/db-sqlite": "3.86.0",
     "@payloadcms/eslint-config": "3.28.0",
-    "@payloadcms/next": "3.86.0",
+    "@payloadcms/next": "3.88.0",
     "@payloadcms/richtext-lexical": "3.86.0",
     "@payloadcms/ui": "3.86.0",
     "@playwright/test": "1.58.2",
