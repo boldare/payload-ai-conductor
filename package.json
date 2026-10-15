@@ -79,7 +79,7 @@
   "devDependencies": {
     "@ai-sdk/provider": "4.0.3",
     "@eslint/eslintrc": "^3.2.0",
-    "@payloadcms/db-sqlite": "3.86.0",
+    "@payloadcms/db-sqlite": "3.90.0",
     "@payloadcms/eslint-config": "3.28.0",
     "@payloadcms/next": "3.86.0",
     "@payloadcms/richtext-lexical": "3.86.0",
