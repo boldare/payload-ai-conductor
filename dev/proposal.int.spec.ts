@@ -58,7 +58,7 @@ describe('validateProposal', () => {
       { user },
     )
 
-    expect(result).toEqual({ valid: true })
+    expect(result).toMatchObject({ valid: true })
   })
 
   test('rejects a block missing a required field', async () => {
@@ -128,6 +128,8 @@ describe('validateProposal', () => {
       payload,
       {
         data: {
+          title: 'With Avatar',
+          slug: 'with-avatar',
           layout: [{ authorName: 'A', avatar: media.id, blockType: 'testimonial', quote: 'Great!' }],
         },
         target: { collection: 'pages' },
@@ -135,7 +137,7 @@ describe('validateProposal', () => {
       { user },
     )
 
-    expect(result).toEqual({ valid: true })
+    expect(result).toMatchObject({ valid: true })
   })
 
   test('unknown collection is rejected', async () => {
@@ -143,6 +145,94 @@ describe('validateProposal', () => {
       data: {},
       target: { collection: 'not-a-real-collection' as never },
     })
+
+    expect(result.valid).toBe(false)
+  })
+})
+
+describe('validateProposal — required fields, row limits and unknown keys', () => {
+  test('a create must supply every required top-level field', async () => {
+    const result = await validateProposal(
+      payload,
+      { data: { layout: [{ blockType: 'hero', heading: 'Hi' }] }, target: { collection: 'pages' } },
+      { user },
+    )
+
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.issues).toEqual(expect.arrayContaining(['title: is required', 'slug: is required']))
+    }
+  })
+
+  test('an unknown top-level field is rejected instead of silently dropped', async () => {
+    const result = await validateProposal(
+      payload,
+      { data: { title: 'T', slug: 'unknown-top', subtitle: 'nope' }, target: { collection: 'pages' } },
+      { user },
+    )
+
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.issues.join(' ')).toContain('"subtitle"')
+    }
+  })
+
+  test('an unknown field inside a block is rejected, with the block named in the path', async () => {
+    const result = await validateProposal(
+      payload,
+      {
+        data: { title: 'T', slug: 'unknown-block-key', layout: [{ blockType: 'hero', heading: 'Hi', colour: 'red' }] },
+        target: { collection: 'pages' },
+      },
+      { user },
+    )
+
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.issues.join(' ')).toMatch(/layout\[0:hero\].*"colour"/)
+    }
+  })
+
+  test('number min/max from the block config is enforced before approval', async () => {
+    const result = await validateProposal(
+      payload,
+      {
+        data: {
+          title: 'T',
+          slug: 'grid-columns',
+          layout: [{ blockType: 'grid', columns: 9, items: [{ title: 'A' }] }],
+        },
+        target: { collection: 'pages' },
+      },
+      { user },
+    )
+
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.issues.join(' ')).toContain('layout[0:grid].columns')
+    }
+  })
+
+  test('an update only needs the fields it changes — required fields come from the stored document', async () => {
+    const created = await payload.create({ collection: 'pages', data: { title: 'Stored', slug: 'stored-required' } })
+
+    const result = await validateProposal(
+      payload,
+      { data: { title: 'Renamed' }, target: { collection: 'pages', id: created.id } },
+      { user },
+    )
+
+    expect(result).toMatchObject({ valid: true })
+  })
+
+  test('an update still cannot blank out a required field', async () => {
+    const created = await payload.create({ collection: 'pages', data: { title: 'Stored', slug: 'stored-blank' } })
+
+    const result = await validateProposal(
+      payload,
+      { data: { title: '' }, target: { collection: 'pages', id: created.id } },
+      { user },
+    )
 
     expect(result.valid).toBe(false)
   })

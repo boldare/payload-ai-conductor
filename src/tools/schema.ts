@@ -142,6 +142,45 @@ export const findBlocksFields = (fields: Field[]): Array<{ blocks: Block[]; name
 }
 
 /**
+ * Fields Payload adds to every collection itself (timestamps, the drafts status, soft-delete
+ * marker). They aren't content: a proposal can't set them, and reads leave them out of `data`.
+ */
+const SYSTEM_FIELD_NAMES = new Set(['_status', 'createdAt', 'deletedAt', 'id', 'updatedAt'])
+
+/** Top-level fields minus Payload's own system fields — the fields a proposal may write. */
+export const contentFields = (fields: Field[]): Field[] =>
+  fields.filter((field) => !('name' in field && SYSTEM_FIELD_NAMES.has(field.name)))
+
+/** Data keys the given fields occupy at this level (rows/collapsibles/unnamed tabs+groups flatten). */
+export const topLevelDataKeys = (fields: Field[]): string[] =>
+  fields.flatMap((field): string[] => {
+    if (field.type === 'row' || field.type === 'collapsible') {
+      return topLevelDataKeys(field.fields)
+    }
+    if (field.type === 'tabs') {
+      return field.tabs.flatMap((tab) => ('name' in tab && tab.name ? [tab.name] : topLevelDataKeys(tab.fields)))
+    }
+    if (field.type === 'group' && !('name' in field && field.name)) {
+      return topLevelDataKeys(field.fields)
+    }
+    if (field.type === 'ui' || field.type === 'join' || !('name' in field) || ('virtual' in field && field.virtual)) {
+      return []
+    }
+    return [field.name]
+  })
+
+/** A stored document reduced to just its content fields — what a read returns and an edit starts from. */
+export const pickContentData = (fields: Field[], doc: Record<string, unknown>): Record<string, unknown> => {
+  const picked: Record<string, unknown> = {}
+  for (const key of topLevelDataKeys(contentFields(fields))) {
+    if (doc[key] !== undefined) {
+      picked[key] = doc[key]
+    }
+  }
+  return picked
+}
+
+/**
  * `CollectionSlug` is a strict union of a real installation's collection slugs,
  * populated via declaration merging from that installation's generated types.
  * This package's own tsconfig has no such augmentation in scope, so the cast

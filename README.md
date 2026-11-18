@@ -149,6 +149,9 @@ Exposed tools: `list_collections`, `get_collection_schema`, `list_blocks`, `get_
 ## Guardrails
 
 - `apply_proposal` is the only tool that writes — only after validation, and, in chat, only after your approval.
+- Proposals are validated *before* you approve them: required fields (against the merged document on update), array
+  and blocks `minRows`/`maxRows`, number/text limits, unknown fields and block types, and that every referenced
+  document exists and is readable by you.
 - `maxSteps` / `timeoutMs` bound how long and how far a single turn can run.
 - Debug mode is off by default; a pending approval is always shown regardless of that setting.
 
