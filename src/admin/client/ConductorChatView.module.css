@@ -129,48 +129,46 @@
   align-items: center;
   gap: 6px;
   background: var(--theme-elevation-50);
-  border: 1px solid var(--theme-border-color);
-  border-radius: 4px;
-  padding: 4px 8px;
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: 999px;
+  padding: 4px 6px 4px 10px;
   font-size: 0.9em;
 }
 
 .attachmentThumb {
-  width: 24px;
-  height: 24px;
-  border-radius: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   object-fit: cover;
 }
 
-.actionButton {
-  display: inline-block;
-  border: 1px solid var(--theme-border-color);
-  border-radius: 4px;
-  padding: 8px 12px;
-  font: inherit;
-  cursor: pointer;
-}
-
-.actionButton:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.formFooter {
-  display: flex;
+.chipRemove {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--theme-elevation-500);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
 }
 
-.sendControls {
-  display: flex;
-  gap: 8px;
+.chipRemove:hover {
+  background: var(--theme-elevation-150);
+  color: var(--theme-text);
 }
 
+/* Layout: header and composer keep their size, only the message list scrolls between them. */
 .page {
   display: flex;
   flex-direction: column;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 24px 0;
   /* Payload's own admin chrome (nav/header) isn't height-bounded, so without this the whole
      page scrolls instead of just the message list — pin our view to the viewport instead. */
   height: calc(100vh - var(--app-header-height));
@@ -185,11 +183,129 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 4px;
+  padding: 0 4px 16px 0;
 }
 
-.footer {
+/* The composer is a separate, bottom-pinned panel — a flex sibling of the list, never an overlay,
+   so it can't cover the last message however tall it grows. */
+.composer {
   flex-shrink: 0;
+  margin: 0 -24px;
+  padding: 12px 24px 14px;
+  background: var(--theme-bg);
+  border-top: 1px solid var(--theme-elevation-100);
+  box-shadow: 0 -8px 24px -16px rgb(0 0 0 / 35%);
+}
+
+.inputShell {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 6px;
+  background: var(--theme-input-bg, var(--theme-elevation-0));
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: 20px;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.inputShell:hover {
+  border-color: var(--theme-elevation-250);
+}
+
+.inputShell:focus-within {
+  border-color: var(--theme-success-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-success-500) 25%, transparent);
+}
+
+.textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 4px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--theme-text);
+  font: inherit;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: hidden;
+  box-shadow: none;
+}
+
+.textarea::placeholder {
+  color: var(--theme-elevation-400);
+}
+
+.iconButton,
+.sendButton,
+.stopButton {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease;
+}
+
+.iconButton {
+  background: transparent;
+  color: var(--theme-elevation-500);
+}
+
+.iconButton:hover {
+  background: var(--theme-elevation-100);
+  color: var(--theme-text);
+}
+
+.sendButton {
+  background: var(--theme-success-500);
+  color: #fff;
+}
+
+.sendButton:hover:not(:disabled) {
+  background: var(--theme-success-600, var(--theme-success-500));
+}
+
+.sendButton:disabled {
+  background: var(--theme-elevation-150);
+  color: var(--theme-elevation-400);
+  cursor: default;
+}
+
+.stopButton {
+  background: var(--theme-text);
+  color: var(--theme-bg);
+}
+
+.stopButton:hover {
+  opacity: 0.85;
+}
+
+.iconButton:focus-visible,
+.sendButton:focus-visible,
+.stopButton:focus-visible,
+.chipRemove:focus-visible {
+  outline: 2px solid var(--theme-success-500);
+  outline-offset: 2px;
+}
+
+.composerHint {
+  margin: 6px 0 0;
+  color: var(--theme-elevation-400);
+  font-size: 0.75em;
+  text-align: center;
 }
 
 /* Agent activity ("working" bubble) */
@@ -240,7 +356,9 @@
 .bubbleUser {
   background: var(--theme-success-500);
   border-bottom-right-radius: 3px;
-  color: var(--theme-elevation-0);
+  /* Fixed brand background in both themes, so a fixed light text color too (the elevation scale
+     flips to near-black in dark mode). */
+  color: #fff;
 }
 
 .bubbleAssistant {

@@ -6,14 +6,22 @@ import { useChat } from '@ai-sdk/react'
 import { useConfig } from '@payloadcms/ui'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai'
 import { useSearchParams } from 'next/navigation.js'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import type { Activity } from './chatState.js'
 
 import { CHAT_ENDPOINT_PATH, UPLOAD_ENDPOINT_PATH } from '../../constants.js'
-import { getActivity, isApprovalRequest, isPartVisible, isToolPart, splitIntoSteps, toolNameOf } from './chatState.js'
+import {
+  getActivity,
+  isApprovalRequest,
+  isPartVisible,
+  isToolPart,
+  shouldSubmitOnKeyDown,
+  splitIntoSteps,
+  toolNameOf,
+} from './chatState.js'
 import styles from './ConductorChatView.module.css'
 
 type UploadedAttachment = { collection: string; id: number | string; mimeType: string; name: string; url?: string }
@@ -27,6 +35,9 @@ type Attachment = {
   status: 'done' | 'error' | 'uploading'
 }
 
+/** Textarea grows with its content up to this many lines, then scrolls inside. */
+const COMPOSER_MAX_LINES = 6
+
 const fileToDataUrl = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -34,6 +45,24 @@ const fileToDataUrl = (file: File): Promise<string> =>
     reader.onerror = () => reject(new Error(reader.error?.message ?? 'Failed to read file'))
     reader.readAsDataURL(file)
   })
+
+const PaperclipIcon = () => (
+  <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+    <path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+  </svg>
+)
+
+const ArrowUpIcon = () => (
+  <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25" viewBox="0 0 24 24" width="18">
+    <path d="M12 19V5M5 12l7-7 7 7" />
+  </svg>
+)
+
+const StopIcon = () => (
+  <svg aria-hidden="true" fill="currentColor" height="14" viewBox="0 0 24 24" width="14">
+    <rect height="16" rx="3" width="16" x="4" y="4" />
+  </svg>
+)
 
 const ThinkingBubble = ({ activity }: { activity: Activity }) => (
   <div className={`${styles.messageRow} ${styles.messageRowAssistant}`}>
@@ -131,27 +160,47 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
+  const api = config.routes.api
+
   const { addToolApprovalResponse, error, messages, sendMessage, status, stop } = useChat({
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
-    transport: new DefaultChatTransport({ api: `${config.routes.api}${CHAT_ENDPOINT_PATH}` }),
+    transport: new DefaultChatTransport({ api: `${api}${CHAT_ENDPOINT_PATH}` }),
   })
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isStreaming = status === 'streaming' || status === 'submitted'
   const isUploading = attachments.some((attachment) => attachment.status === 'uploading')
+  const canSend = !isStreaming && !isUploading && (input.trim().length > 0 || attachments.some((a) => a.status === 'done'))
   const activity = getActivity(messages, isStreaming)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages, activity.visible])
+  }, [messages, activity.visible, error])
+
+  // Auto-grow: fit the content, capped at COMPOSER_MAX_LINES, scrolling inside beyond that.
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea) {
+      return
+    }
+    const style = window.getComputedStyle(textarea)
+    const lineHeight = parseFloat(style.lineHeight) || 20
+    const maxHeight =
+      lineHeight * COMPOSER_MAX_LINES + parseFloat(style.paddingTop || '0') + parseFloat(style.paddingBottom || '0')
+    textarea.style.height = 'auto'
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  }, [input])
 
   const uploadAttachment = async (attachment: Attachment) => {
     try {
       const formData = new FormData()
       formData.set('file', attachment.file)
 
-      const res = await fetch(`${config.routes.api}${UPLOAD_ENDPOINT_PATH}`, { body: formData, method: 'POST' })
+      const res = await fetch(`${api}${UPLOAD_ENDPOINT_PATH}`, { body: formData, method: 'POST' })
       const data = (await res.json()) as { error?: string; issues?: string[] } & Partial<UploadedAttachment>
 
       if (!res.ok || !data.id) {
@@ -196,12 +245,11 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
     })
   }
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    const uploaded = attachments.filter((a) => a.status === 'done' && a.result)
-    if (!input.trim() && uploaded.length === 0) {
+  const submit = async () => {
+    if (!canSend) {
       return
     }
+    const uploaded = attachments.filter((a) => a.status === 'done' && a.result)
 
     const notes = uploaded.map((a) => `[Attached: ${a.result!.collection}#${a.result!.id} "${a.result!.name}"]`)
     const text = [input.trim(), ...notes].filter(Boolean).join('\n\n')
@@ -224,8 +272,26 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
     setAttachments([])
   }
 
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    void submit()
+  }
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey) {
+      return
+    }
+    // Plain Enter never inserts a newline — it sends, or does nothing while sending isn't possible.
+    if (!event.nativeEvent.isComposing && event.keyCode !== 229) {
+      event.preventDefault()
+    }
+    if (shouldSubmitOnKeyDown(event, canSend)) {
+      void submit()
+    }
+  }
+
   return (
-    <div className={styles.page} style={{ margin: '0 auto', maxWidth: 1100, padding: 24 }}>
+    <div className={styles.page}>
       <div className={styles.header}>
         <h1>AI Conductor</h1>
         {collection && (
@@ -260,16 +326,15 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
             )),
         )}
         {activity.visible && <ThinkingBubble activity={activity} />}
+        {error && (
+          <p className={styles.errorText} role="alert">
+            {error.message || 'Something went wrong talking to the model.'}
+          </p>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
-      {error && (
-        <p className={styles.errorText} role="alert">
-          {error.message || 'Something went wrong talking to the model.'}
-        </p>
-      )}
-
-      <form className={styles.footer} onSubmit={handleSubmit}>
+      <form className={styles.composer} onSubmit={handleSubmit}>
         {attachments.length > 0 && (
           <ul className={styles.attachmentList}>
             {attachments.map((attachment) => (
@@ -282,6 +347,7 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
                 {attachment.status === 'error' && <span className={styles.errorText}>{attachment.error}</span>}
                 <button
                   aria-label={`Remove ${attachment.file.name}`}
+                  className={styles.chipRemove}
                   onClick={() => removeAttachment(attachment.id)}
                   type="button"
                 >
@@ -292,43 +358,48 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
           </ul>
         )}
 
-        <textarea
-          aria-label="Message"
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Ask AI Conductor to build or edit a page..."
-          rows={3}
-          style={{ width: '100%' }}
-          value={input}
-        />
-        <div className={styles.formFooter}>
-          <label className={styles.actionButton}>
-            Attach files
-            <input
-              aria-label="Attach files"
-              hidden
-              multiple
-              onChange={(event) => {
-                handleFilesSelected(event.target.files)
-                event.target.value = ''
-              }}
-              type="file"
-            />
-          </label>
-          <div className={styles.sendControls}>
-            <button
-              className={styles.actionButton}
-              disabled={isStreaming || isUploading || (!input.trim() && attachments.length === 0)}
-              type="submit"
-            >
-              Send
+        <div className={styles.inputShell}>
+          <button
+            aria-label="Attach files"
+            className={styles.iconButton}
+            onClick={() => fileInputRef.current?.click()}
+            title="Attach files"
+            type="button"
+          >
+            <PaperclipIcon />
+          </button>
+          <input
+            aria-label="Attach files"
+            hidden
+            multiple
+            onChange={(event) => {
+              handleFilesSelected(event.target.files)
+              event.target.value = ''
+            }}
+            ref={fileInputRef}
+            type="file"
+          />
+          <textarea
+            aria-label="Message"
+            className={styles.textarea}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask AI Conductor to build or edit a page..."
+            ref={textareaRef}
+            rows={1}
+            value={input}
+          />
+          {isStreaming ? (
+            <button aria-label="Stop" className={styles.stopButton} onClick={() => stop()} title="Stop" type="button">
+              <StopIcon />
             </button>
-            {isStreaming && (
-              <button className={styles.actionButton} onClick={() => stop()} type="button">
-                Stop
-              </button>
-            )}
-          </div>
+          ) : (
+            <button aria-label="Send" className={styles.sendButton} disabled={!canSend} title="Send" type="submit">
+              <ArrowUpIcon />
+            </button>
+          )}
         </div>
+        <p className={styles.composerHint}>Enter to send · Shift+Enter for a new line</p>
       </form>
     </div>
   )

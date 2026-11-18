@@ -116,3 +116,17 @@ export const getActivity = (messages: UIMessage[], isStreaming: boolean): Activi
   return { note, status, visible: true }
 }
 
+/**
+ * Enter sends, Shift+Enter is a newline. Never send mid-IME-composition (Enter there confirms the
+ * composed characters — `keyCode 229` covers Safari, which doesn't set `isComposing`), and never when
+ * the Send button itself would be disabled.
+ */
+export const shouldSubmitOnKeyDown = (
+  event: { key: string; keyCode?: number; nativeEvent?: { isComposing?: boolean }; shiftKey: boolean },
+  canSend: boolean,
+): boolean =>
+  event.key === 'Enter' &&
+  !event.shiftKey &&
+  !event.nativeEvent?.isComposing &&
+  event.keyCode !== 229 &&
+  canSend

@@ -2,7 +2,7 @@ import type { UIMessage } from 'ai'
 
 import { describe, expect, test } from 'vitest'
 
-import { getActivity, isPartVisible } from './chatState.js'
+import { getActivity, isPartVisible, shouldSubmitOnKeyDown } from './chatState.js'
 
 type Part = UIMessage['parts'][number]
 
@@ -85,5 +85,23 @@ describe('isPartVisible', () => {
     expect(isPartVisible(tool('apply_proposal', 'approval-requested', { approval: { id: 'x' } }), false)).toBe(true)
     expect(isPartVisible(tool('list_blocks', 'output-available'), false)).toBe(false)
     expect(isPartVisible(tool('list_blocks', 'output-available'), true)).toBe(true)
+  })
+})
+
+describe('shouldSubmitOnKeyDown', () => {
+  const enter = { key: 'Enter', shiftKey: false }
+
+  test('Enter sends, Shift+Enter does not', () => {
+    expect(shouldSubmitOnKeyDown(enter, true)).toBe(true)
+    expect(shouldSubmitOnKeyDown({ ...enter, shiftKey: true }, true)).toBe(false)
+  })
+
+  test('never during IME composition', () => {
+    expect(shouldSubmitOnKeyDown({ ...enter, nativeEvent: { isComposing: true } }, true)).toBe(false)
+    expect(shouldSubmitOnKeyDown({ ...enter, keyCode: 229 }, true)).toBe(false)
+  })
+
+  test('never when sending is disabled (empty, streaming or uploading)', () => {
+    expect(shouldSubmitOnKeyDown(enter, false)).toBe(false)
   })
 })

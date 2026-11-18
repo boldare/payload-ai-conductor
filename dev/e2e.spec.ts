@@ -53,7 +53,62 @@ test('sending a message without a configured model surfaces an error instead of 
   await page.goto('/admin/ai-conductor')
 
   await page.getByPlaceholder('Ask AI Conductor to build or edit a page...').fill('Build me a landing page')
-  await page.click('button:has-text("Send")')
+  await page.getByRole('button', { name: 'Send' }).click()
 
   await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 })
+})
+
+test.describe('composer', () => {
+  test.beforeEach(async ({ page }) => {
+    await login(page)
+    await page.goto('/admin/ai-conductor')
+  })
+
+  test('is not resizable and grows with its content up to ~6 lines, then scrolls', async ({ page }) => {
+    const textarea = page.getByRole('textbox', { name: 'Message' })
+    await expect(textarea).toHaveCSS('resize', 'none')
+
+    const oneLine = (await textarea.boundingBox())!.height
+    await textarea.fill('1\n2\n3')
+    const threeLines = (await textarea.boundingBox())!.height
+    expect(threeLines).toBeGreaterThan(oneLine)
+
+    await textarea.fill(Array.from({ length: 15 }, (_, i) => `line ${i}`).join('\n'))
+    const capped = (await textarea.boundingBox())!.height
+    await textarea.fill(Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n'))
+    expect((await textarea.boundingBox())!.height).toBe(capped)
+    await expect(textarea).toHaveCSS('overflow-y', 'auto')
+  })
+
+  test('Shift+Enter adds a new line; Enter sends; Enter on an empty field does nothing', async ({ page }) => {
+    const textarea = page.getByRole('textbox', { name: 'Message' })
+
+    await textarea.press('Enter')
+    await expect(page.locator('[class*="bubbleUser"]')).toHaveCount(0)
+
+    await textarea.fill('first line')
+    await textarea.press('Shift+Enter')
+    await textarea.pressSequentially('second line')
+    await expect(textarea).toHaveValue('first line\nsecond line')
+
+    await textarea.press('Enter')
+    await expect(textarea).toHaveValue('')
+    await expect(page.getByText('second line')).toBeVisible()
+  })
+
+  test('sits below the message list instead of covering it', async ({ page }) => {
+    const textarea = page.getByRole('textbox', { name: 'Message' })
+    const userBubbles = page.locator('[class*="bubbleUser"]')
+    for (const n of [1, 2, 3, 4, 5, 6]) {
+      await textarea.fill(`message ${n}`)
+      await textarea.press('Enter')
+      await expect(userBubbles).toHaveCount(n)
+      // The turn is over once Stop turns back into Send.
+      await expect(page.getByRole('button', { name: 'Send' })).toBeVisible({ timeout: 15_000 })
+    }
+
+    const composer = (await page.locator('form:has(textarea[aria-label="Message"])').boundingBox())!
+    const lastMessage = (await userBubbles.last().boundingBox())!
+    expect(lastMessage.y + lastMessage.height).toBeLessThanOrEqual(composer.y)
+  })
 })
