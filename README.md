@@ -128,7 +128,14 @@ A prominent call-to-action banner. Use mid-page, not at the top.
 ## Using it
 
 **In the admin** — click **AI Conductor** in the nav, or **Ask AI Conductor** on any document's edit view for
-page-scoped context. Attach an image to use it directly in a block, or a file just for context.
+page-scoped context (the agent is told which document "this page" is). Attach an image to use it directly in a block,
+or a file just for context.
+
+**Editing existing pages** — the agent reads the page with `get_document` (content plus the `id` of every block),
+then proposes the edit with that document's `id`: changed top-level fields in `data`, and block changes as
+`operations` — `update`, `insert`, `remove` or `move` a block by id — so blocks it isn't touching stay exactly as they
+are. A blocks array sent in `data` on an update replaces the stored one, and is rejected if it would silently drop
+blocks it doesn't mention.
 
 **Over MCP** — point any MCP client at your site, authenticated as a restricted (non-admin) Payload user:
 
@@ -144,7 +151,7 @@ page-scoped context. Attach an image to use it directly in a block, or a file ju
 ```
 
 Exposed tools: `list_collections`, `get_collection_schema`, `list_blocks`, `get_block_schema`, `search_documents`,
-`propose_layout`, `revise_proposal`, `apply_proposal`.
+`get_document`, `propose_layout`, `revise_proposal`, `apply_proposal`.
 
 ## Guardrails
 

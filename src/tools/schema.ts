@@ -142,6 +142,35 @@ export const findBlocksFields = (fields: Field[]): Array<{ blocks: Block[]; name
 }
 
 /**
+ * Dotted data paths of every blocks field a block operation can address: top level, or nested
+ * through named groups/tabs (`hero.layout`). Blocks inside array rows are skipped — a row has no
+ * stable address for an operation to point at.
+ */
+export const findBlocksFieldPaths = (fields: Field[], prefix = ''): Array<{ blocks: Block[]; path: string }> => {
+  return fields.flatMap((field): Array<{ blocks: Block[]; path: string }> => {
+    if (field.type === 'blocks') {
+      return [{ blocks: field.blocks, path: `${prefix}${field.name}` }]
+    }
+    if (field.type === 'row' || field.type === 'collapsible') {
+      return findBlocksFieldPaths(field.fields, prefix)
+    }
+    if (field.type === 'group') {
+      return 'name' in field && field.name
+        ? findBlocksFieldPaths(field.fields, `${prefix}${field.name}.`)
+        : findBlocksFieldPaths(field.fields, prefix)
+    }
+    if (field.type === 'tabs') {
+      return field.tabs.flatMap((tab) =>
+        'name' in tab && tab.name
+          ? findBlocksFieldPaths(tab.fields, `${prefix}${tab.name}.`)
+          : findBlocksFieldPaths(tab.fields, prefix),
+      )
+    }
+    return []
+  })
+}
+
+/**
  * Fields Payload adds to every collection itself (timestamps, the drafts status, soft-delete
  * marker). They aren't content: a proposal can't set them, and reads leave them out of `data`.
  */

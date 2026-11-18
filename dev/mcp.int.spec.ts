@@ -68,6 +68,7 @@ describe('MCP endpoint', () => {
         'list_blocks',
         'get_block_schema',
         'search_documents',
+        'get_document',
         'propose_layout',
         'revise_proposal',
         'apply_proposal',
@@ -146,5 +147,24 @@ describe('MCP endpoint', () => {
     const parsed = JSON.parse(body.result.content[0].text)
     expect(parsed.success).toBe(true)
     expect(parsed.doc.title).toBe('From MCP')
+  })
+
+  const callTool = async (name: string, args: Record<string, unknown>) => {
+    const handler = createMcpEndpointHandler({ collections: ['pages'] })
+    const res = await handler(jsonRpcRequest({ id: 10, jsonrpc: '2.0', method: 'tools/call', params: { arguments: args, name } }))
+    const body = await readJsonRpcResult(res)
+    return { isError: Boolean(body.result.isError), parsed: JSON.parse(body.result.content[0].text) }
+  }
+
+  test('get_document reads a page with its block ids', async () => {
+    const page = await payload.create({
+      collection: 'pages',
+      data: { title: 'MCP Read', slug: 'mcp-read', layout: [{ blockType: 'hero', heading: 'Read me' }] },
+    })
+
+    const { isError, parsed } = await callTool('get_document', { id: page.id, collection: 'pages' })
+    expect(isError).toBe(false)
+    expect(parsed.data.layout[0]).toMatchObject({ blockType: 'hero', heading: 'Read me' })
+    expect(parsed.data.layout[0].id).toBeTruthy()
   })
 })

@@ -43,7 +43,16 @@ test('the document-controls button deep-links into the chat view with doc contex
 
   await page.click('a:has-text("Ask AI Conductor")')
   await expect(page).toHaveURL(/\/admin\/ai-conductor\?collection=pages&id=\d+$/)
-  await expect(page.getByText('pages', { exact: false })).toBeVisible()
+  // Scoped to our context line — the nav's "Pages" link also matches a bare text search once the nav
+  // is open (Payload remembers that per user, so it depends on test order).
+  await expect(page.locator('p', { hasText: 'Context:' })).toContainText('pages')
+
+  // The doc context travels with the chat request itself, not just the URL.
+  const chatRequest = page.waitForRequest((req) => req.url().endsWith('/api/plugin/ai-conductor/chat'))
+  await page.getByRole('textbox', { name: 'Message' }).fill('Make the hero punchier')
+  await page.getByRole('button', { name: 'Send' }).click()
+  const body = (await chatRequest).postDataJSON() as { context?: { collection: string; id: string } }
+  expect(body.context).toMatchObject({ collection: 'pages', id: expect.stringMatching(/^\d+$/) })
 })
 
 test('sending without a configured model explains the problem and links to Settings', async ({ page }) => {

@@ -6,7 +6,7 @@ import { useChat } from '@ai-sdk/react'
 import { useConfig } from '@payloadcms/ui'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai'
 import { useSearchParams } from 'next/navigation.js'
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -180,9 +180,20 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
   const api = config.routes.api
   const settingsUrl = `${config.routes.admin}/globals/ai-conductor-settings`
 
+  // "Ask AI Conductor" on an edit view opens this screen with ?collection=&id= — send that along
+  // with every request so the agent knows which document "this page" is.
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: `${api}${CHAT_ENDPOINT_PATH}`,
+        body: collection ? { context: { id: id ?? undefined, collection } } : undefined,
+      }),
+    [api, collection, id],
+  )
+
   const { addToolApprovalResponse, error, messages, sendMessage, status, stop } = useChat({
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
-    transport: new DefaultChatTransport({ api: `${api}${CHAT_ENDPOINT_PATH}` }),
+    transport,
   })
 
   const messagesEndRef = useRef<HTMLDivElement>(null)

@@ -7,7 +7,7 @@ import path from 'path'
 import { getPayload } from 'payload'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
-import { searchDocuments } from '../src/tools/lookup.js'
+import { getDocument, searchDocuments } from '../src/tools/lookup.js'
 import { applyProposal, validateProposal } from '../src/tools/proposal.js'
 import { devUser } from './helpers/credentials.js'
 
@@ -235,6 +235,155 @@ describe('validateProposal — required fields, row limits and unknown keys', ()
     )
 
     expect(result.valid).toBe(false)
+  })
+})
+
+describe('editing existing documents', () => {
+  const seedPage = async (slug: string) =>
+    payload.create({
+      collection: 'pages',
+      data: {
+        title: 'Editable',
+        slug,
+        layout: [
+          { blockType: 'hero', heading: 'Original hero' },
+          { blockType: 'testimonial', authorName: 'Ana', quote: 'Lovely' },
+          { blockType: 'cta', buttonHref: '/go', buttonLabel: 'Go', heading: 'Original CTA' },
+        ],
+      },
+    })
+
+  const layoutOf = (doc: unknown) => (doc as { layout: Array<{ blockType: string; heading?: string; id: string }> }).layout
+
+  test('get_document returns content fields and block ids, without timestamps', async () => {
+    const page = await seedPage('get-document-page')
+    const result = await getDocument(payload, { id: page.id, collection: 'pages' }, { user })
+
+    expect(result).not.toHaveProperty('error')
+    if ('error' in result) {
+      return
+    }
+    expect(result.id).toBe(page.id)
+    expect(result.data).toMatchObject({ title: 'Editable', slug: 'get-document-page' })
+    expect(result.data).not.toHaveProperty('createdAt')
+    expect(layoutOf(result.data).map((block) => block.id)).toEqual(layoutOf(page).map((block) => block.id))
+  })
+
+  test('get_document reports a missing document instead of throwing', async () => {
+    const result = await getDocument(payload, { id: 999999, collection: 'pages' }, { user })
+    expect(result).toEqual({ error: 'pages#999999 does not exist or is not accessible' })
+  })
+
+  test('an update operation changes one block and keeps the rest', async () => {
+    const page = await seedPage('op-update-page')
+    const [hero, testimonial, cta] = layoutOf(page)
+
+    const result = await applyProposal(
+      payload,
+      {
+        operations: [{ blockId: hero.id, data: { heading: 'New hero' }, op: 'update' }],
+        target: { collection: 'pages', id: page.id },
+      },
+      { user },
+    )
+
+    expect(result.success).toBe(true)
+    if (!result.success) {
+      return
+    }
+    expect(layoutOf(result.doc).map((block) => block.id)).toEqual([hero.id, testimonial.id, cta.id])
+    expect(layoutOf(result.doc)[0].heading).toBe('New hero')
+  })
+
+  test('insert, move and remove operations address blocks by id', async () => {
+    const page = await seedPage('op-mixed-page')
+    const [hero, testimonial, cta] = layoutOf(page)
+
+    const result = await applyProposal(
+      payload,
+      {
+        operations: [
+          { after: hero.id, block: { blockType: 'grid', items: [{ title: 'Fast' }] }, op: 'insert' },
+          { blockId: cta.id, index: 0, op: 'move' },
+          { blockId: testimonial.id, op: 'remove' },
+        ],
+        target: { collection: 'pages', id: page.id },
+      },
+      { user },
+    )
+
+    expect(result.success).toBe(true)
+    if (!result.success) {
+      return
+    }
+    expect(layoutOf(result.doc).map((block) => block.blockType)).toEqual(['cta', 'hero', 'grid'])
+    expect(layoutOf(result.doc).map((block) => block.id)).not.toContain(testimonial.id)
+  })
+
+  test('sending a single block as the whole layout on update is refused, not a silent wipe', async () => {
+    const page = await seedPage('partial-layout-page')
+    const [hero] = layoutOf(page)
+
+    const result = await validateProposal(
+      payload,
+      {
+        data: { layout: [{ id: hero.id, blockType: 'hero', heading: 'Only me' }] },
+        target: { collection: 'pages', id: page.id },
+      },
+      { user },
+    )
+
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.issues[0]).toContain('would delete 2 existing block(s)')
+      expect(result.issues[0]).toContain('cta "Original CTA"')
+    }
+
+    const stored = await payload.findByID({ id: page.id, collection: 'pages' })
+    expect(layoutOf(stored)).toHaveLength(3)
+  })
+
+  test('a full layout that keeps every block id is accepted on update', async () => {
+    const page = await seedPage('full-layout-page')
+    const layout = layoutOf(page).map((block) => ({ ...block }))
+    layout[2].heading = 'Updated CTA'
+
+    const result = await validateProposal(
+      payload,
+      { data: { layout }, target: { collection: 'pages', id: page.id } },
+      { user },
+    )
+
+    expect(result).toMatchObject({ valid: true })
+  })
+
+  test('an operation on a block id that does not exist names the ids that do', async () => {
+    const page = await seedPage('missing-block-page')
+
+    const result = await validateProposal(
+      payload,
+      { operations: [{ blockId: 'nope', op: 'remove' }], target: { collection: 'pages', id: page.id } },
+      { user },
+    )
+
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.issues[0]).toContain('no block with id "nope" in layout')
+      expect(result.issues[0]).toContain(layoutOf(page)[0].id)
+    }
+  })
+
+  test('block operations without a document id are refused', async () => {
+    const result = await validateProposal(
+      payload,
+      { operations: [{ blockId: 'x', op: 'remove' }], target: { collection: 'pages' } },
+      { user },
+    )
+
+    expect(result).toEqual({
+      issues: ['update/remove/move operations edit an existing document — pass its "id"'],
+      valid: false,
+    })
   })
 })
 
