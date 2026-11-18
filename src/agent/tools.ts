@@ -9,7 +9,13 @@ import type { PayloadAiConductorConfig } from '../index.js'
 import { getSettings, resolveAllowedCollections } from '../globals/settings.js'
 import { recordAppliedProposal } from '../tools/audit.js'
 import { resolveBlockMetadata } from '../tools/blockMetadata.js'
-import { searchDocuments } from '../tools/lookup.js'
+import {
+  getDocumentInputShape,
+  proposalInputShape,
+  searchDocumentsInputShape,
+  TOOL_DESCRIPTIONS,
+} from '../tools/definitions.js'
+import { getDocument, searchDocuments } from '../tools/lookup.js'
 import { applyProposal, proposeLayout, reviseProposal } from '../tools/proposal.js'
 import {
   asCollectionSlug,
@@ -33,20 +39,16 @@ export const buildAgentTools = async (
   const allowedCollections = discoverCollections(payload.config, resolveAllowedCollections(options, settings))
   const metadataOptions = { blockDocs: options.blockDocs, blocksDir: options.blocksDir }
 
-  const proposalInputSchema = z.object({
-    id: z.union([z.string(), z.number()]).optional(),
-    collection: z.string(),
-    data: z.record(z.string(), z.unknown()),
-  })
+  const proposalInputSchema = z.object(proposalInputShape)
 
   return {
     apply_proposal: tool({
-      description: 'Validate and write a proposal to the database. Requires explicit user approval before it runs.',
-      execute: async ({ id, collection, data }) => {
+      description: `${TOOL_DESCRIPTIONS.apply_proposal} Requires the user's approval in the chat UI before it runs.`,
+      execute: async ({ id, collection, data, operations }) => {
         if (!isCollectionAllowed(collection, allowedCollections)) {
           return notAvailable(collection)
         }
-        const result = await applyProposal(payload, { data, target: { id, collection } }, context)
+        const result = await applyProposal(payload, { data, operations, target: { id, collection } }, context)
         if (result.success) {
           const docId = (result.doc as { id: number | string }).id
           await recordAppliedProposal(payload, { collection, docId }, { ...context, source: 'chat' })
@@ -56,7 +58,7 @@ export const buildAgentTools = async (
       inputSchema: proposalInputSchema,
     }),
     get_block_schema: tool({
-      description: 'Get the field schema and usage guidance for one block, by slug.',
+      description: TOOL_DESCRIPTIONS.get_block_schema,
       execute: ({ slug, collection, field }) => {
         if (!isCollectionAllowed(collection, allowedCollections)) {
           return notAvailable(collection)
@@ -78,7 +80,7 @@ export const buildAgentTools = async (
       inputSchema: z.object({ slug: z.string(), collection: z.string(), field: z.string().optional() }),
     }),
     get_collection_schema: tool({
-      description: "Get a collection's full field schema, including nested blocks fields.",
+      description: TOOL_DESCRIPTIONS.get_collection_schema,
       execute: ({ collection }) => {
         if (!isCollectionAllowed(collection, allowedCollections)) {
           return notAvailable(collection)
@@ -87,8 +89,18 @@ export const buildAgentTools = async (
       },
       inputSchema: z.object({ collection: z.string() }),
     }),
+    get_document: tool({
+      description: TOOL_DESCRIPTIONS.get_document,
+      execute: async ({ id, collection }) => {
+        if (!isCollectionAllowed(collection, allowedCollections)) {
+          return notAvailable(collection)
+        }
+        return getDocument(payload, { id, collection }, context)
+      },
+      inputSchema: z.object(getDocumentInputShape),
+    }),
     list_blocks: tool({
-      description: 'List the blocks available on a collection, with AI Conductor usage guidance for each.',
+      description: TOOL_DESCRIPTIONS.list_blocks,
       execute: ({ collection, field }) => {
         if (!isCollectionAllowed(collection, allowedCollections)) {
           return notAvailable(collection)
@@ -111,7 +123,7 @@ export const buildAgentTools = async (
       inputSchema: z.object({ collection: z.string(), field: z.string().optional() }),
     }),
     list_collections: tool({
-      description: 'List the collections AI Conductor can read/write, with the name of each blocks-type field.',
+      description: TOOL_DESCRIPTIONS.list_collections,
       execute: () => ({
         collections: allowedCollections.map((slug) => ({
           blocksFields: findBlocksFields(payload.collections[slug].config.fields).map((field) => field.name),
@@ -121,27 +133,27 @@ export const buildAgentTools = async (
       inputSchema: z.object({}),
     }),
     propose_layout: tool({
-      description: 'Validate a proposed document layout/content without writing it. Returns validation issues if invalid.',
-      execute: async ({ id, collection, data }) => {
+      description: TOOL_DESCRIPTIONS.propose_layout,
+      execute: async ({ id, collection, data, operations }) => {
         if (!isCollectionAllowed(collection, allowedCollections)) {
           return notAvailable(collection)
         }
-        return proposeLayout(payload, { data, target: { id, collection } }, context)
+        return proposeLayout(payload, { data, operations, target: { id, collection } }, context)
       },
       inputSchema: proposalInputSchema,
     }),
     revise_proposal: tool({
-      description: 'Re-validate a revised version of a pending proposal, before it is applied.',
-      execute: async ({ id, collection, data }) => {
+      description: TOOL_DESCRIPTIONS.revise_proposal,
+      execute: async ({ id, collection, data, operations }) => {
         if (!isCollectionAllowed(collection, allowedCollections)) {
           return notAvailable(collection)
         }
-        return reviseProposal(payload, { data, target: { id, collection } }, context)
+        return reviseProposal(payload, { data, operations, target: { id, collection } }, context)
       },
       inputSchema: proposalInputSchema,
     }),
     search_documents: tool({
-      description: 'Search a collection for existing documents, e.g. to find a document to reference by ID.',
+      description: TOOL_DESCRIPTIONS.search_documents,
       execute: async ({ collection, limit, query }) => {
         if (!isCollectionAllowed(collection, allowedCollections)) {
           return notAvailable(collection)
@@ -149,7 +161,7 @@ export const buildAgentTools = async (
         const results = await searchDocuments(payload, { collection, limit, query }, context)
         return { results }
       },
-      inputSchema: z.object({ collection: z.string(), limit: z.number().optional(), query: z.string().optional() }),
+      inputSchema: z.object(searchDocumentsInputShape),
     }),
   }
 }

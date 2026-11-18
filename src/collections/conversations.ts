@@ -8,13 +8,15 @@ export const buildConversationsCollection = (usersSlug: string): CollectionConfi
   slug: CONVERSATIONS_COLLECTION_SLUG,
   access: {
     create: () => false,
-    delete: ({ req }) => Boolean(req.user),
+    // Same scoping as read: anyone can clear their own history, nobody can delete someone else's.
+    delete: ({ req }) => (req.user ? { user: { equals: req.user.id } } : false),
     read: ({ req }) => (req.user ? { user: { equals: req.user.id } } : false),
     update: () => false,
   },
   admin: {
     defaultColumns: ['user', 'source', 'updatedAt'],
     description: 'Audit trail of AI Conductor conversations and the proposals they applied. Written by the plugin only.',
+    group: 'AI Conductor',
     useAsTitle: 'source',
   },
   fields: [
@@ -45,4 +47,5 @@ export const buildConversationsCollection = (usersSlug: string): CollectionConfi
       ],
     },
   ],
+  labels: { plural: 'AI Conductor Conversations', singular: 'AI Conductor Conversation' },
 })

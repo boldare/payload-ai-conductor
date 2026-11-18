@@ -1,12 +1,15 @@
 import type { Payload, TypedUser } from 'payload'
 
+import type { UIMessage, UIMessageChunk } from 'ai'
+
 import config from '@payload-config'
-import { generateObject, generateText, hasToolCall, stepCountIs } from 'ai'
+import { generateObject, generateText, hasToolCall, readUIMessageStream, stepCountIs } from 'ai'
+import { convertArrayToReadableStream } from 'ai/test'
 import { getPayload } from 'payload'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { z } from 'zod'
 
-import { SYSTEM_PROMPT } from '../src/agent/chatEndpoint.js'
+import { createChatEndpointHandler, SYSTEM_PROMPT } from '../src/agent/chatEndpoint.js'
 import { buildLanguageModel, resolveModelConfigFromEnv } from '../src/agent/provider.js'
 import { buildAgentTools } from '../src/agent/tools.js'
 import { devUser } from './helpers/credentials.js'
@@ -42,17 +45,25 @@ const GOLDEN_PROMPTS = [
   },
 ]
 
+// Opt-in (it makes several real, billed calls per model): AI_CONDUCTOR_EVAL_55=1 plus an Anthropic
+// key in AI_CONDUCTOR_API_KEY. Runs the full chat endpoint — propose, user says "apply", approval,
+// resumed request — on each 5.5 model. That exercises the two things specific to these models:
+// `thinking.display: "updates"` is accepted, and thinking blocks replayed from earlier turns pass the
+// API's history check (they come back from the client as UI messages, not from server memory).
+const anthropicKey = process.env.AI_CONDUCTOR_PROVIDER === 'anthropic' ? process.env.AI_CONDUCTOR_API_KEY : undefined
+const runFiveFiveEval = Boolean(process.env.AI_CONDUCTOR_EVAL_55 && anthropicKey)
+
 let payload: Payload
 let user: TypedUser
 
 afterAll(async () => {
-  if (hasApiKey) {
+  if (hasApiKey || runFiveFiveEval) {
     await payload.destroy()
   }
 })
 
 beforeAll(async () => {
-  if (!hasApiKey) {
+  if (!hasApiKey && !runFiveFiveEval) {
     return
   }
   payload = await getPayload({ config })
@@ -96,4 +107,82 @@ describe.skipIf(!hasApiKey)('golden prompts', () => {
       60_000,
     )
   }
+})
+
+type ChatRequest = Parameters<ReturnType<typeof createChatEndpointHandler>>[0]
+
+/** POST to the real chat endpoint and fold the SSE stream into one message, failing on error chunks. */
+const sendChat = async (
+  handler: ReturnType<typeof createChatEndpointHandler>,
+  messages: UIMessage[],
+  seed?: UIMessage,
+): Promise<UIMessage> => {
+  const req = new Request('http://localhost:3000/api/plugin/ai-conductor/chat', {
+    body: JSON.stringify({ id: `eval-${Date.now()}`, messages }),
+    method: 'POST',
+  }) as unknown as ChatRequest
+  req.payload = payload
+  req.user = user
+  req.locale = undefined
+
+  const res = await handler(req)
+  const chunks = (await res.text())
+    .split('\n')
+    .filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]')
+    .map((line) => JSON.parse(line.slice('data: '.length)) as UIMessageChunk)
+  const error = chunks.find((chunk) => chunk.type === 'error')
+  if (error) {
+    throw new Error(`stream error: ${error.errorText}`)
+  }
+  let last: UIMessage | undefined
+  for await (const message of readUIMessageStream({ message: seed, stream: convertArrayToReadableStream(chunks) })) {
+    last = message
+  }
+  if (!last) {
+    throw new Error('stream produced no message')
+  }
+  return last
+}
+
+describe.skipIf(!runFiveFiveEval).each(['claude-sonnet-5-5', 'claude-opus-5-5'])('Claude 5.5 chat flow: %s', (model) => {
+  test(
+    'propose → "apply" → approve → resumed write, with thinking blocks replayed across turns',
+    async () => {
+      const slug = `eval-${model}-${Date.now()}`
+      const handler = createChatEndpointHandler({
+        collections: ['pages'],
+        getModelConfig: () => ({ apiKey: anthropicKey!, model, provider: 'anthropic' }),
+      })
+
+      const ask: UIMessage = {
+        id: 'u1',
+        parts: [{ type: 'text', text: `Create a page titled "Eval ${model}" with slug "${slug}": a hero and a 3-item feature grid.` }],
+        role: 'user',
+      }
+      const proposed = await sendChat(handler, [ask])
+      const proposeCall = proposed.parts.find(
+        (part) => part.type === 'tool-propose_layout' || part.type === 'tool-revise_proposal',
+      ) as { output?: { valid?: boolean } } | undefined
+      expect(proposeCall?.output?.valid, 'model should validate a proposal first').toBe(true)
+
+      const apply: UIMessage = { id: 'u2', parts: [{ type: 'text', text: 'Looks good — apply it.' }], role: 'user' }
+      const requested = await sendChat(handler, [ask, proposed, apply])
+      const approvalPart = requested.parts.find((part) => part.type === 'tool-apply_proposal')
+      expect(approvalPart && 'state' in approvalPart ? approvalPart.state : undefined).toBe('approval-requested')
+
+      const approved: UIMessage = {
+        ...requested,
+        parts: requested.parts.map((part) =>
+          part.type === 'tool-apply_proposal'
+            ? ({ ...part, approval: { ...part.approval, approved: true }, state: 'approval-responded' } as UIMessage['parts'][number])
+            : part,
+        ),
+      }
+      await sendChat(handler, [ask, proposed, apply, approved], approved)
+
+      const { totalDocs } = await payload.count({ collection: 'pages', where: { slug: { equals: slug } } })
+      expect(totalDocs).toBe(1)
+    },
+    240_000,
+  )
 })

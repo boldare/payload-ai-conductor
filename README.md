@@ -74,10 +74,13 @@ pnpm payload generate:types
 ```sh
 AI_CONDUCTOR_PROVIDER=anthropic
 AI_CONDUCTOR_API_KEY=sk-ant-...
-AI_CONDUCTOR_MODEL=claude-sonnet-5
+AI_CONDUCTOR_MODEL=claude-sonnet-5-5
 ```
 
 Open **AI Conductor** in your admin nav — you're chatting.
+
+> On Claude Sonnet 5.5 / Opus 5.5 the plugin asks the API for the model's progress updates
+> (`thinking.display: "updates"`), so the chat shows what the agent is doing during long tool loops.
 
 > **Lock down the Settings screen.** That screen holds your decrypted API key. Without a `settingsAccess`
 > rule, Payload's own default applies — *any logged-in user*, not just admins:
@@ -128,7 +131,15 @@ A prominent call-to-action banner. Use mid-page, not at the top.
 ## Using it
 
 **In the admin** — click **AI Conductor** in the nav, or **Ask AI Conductor** on any document's edit view for
-page-scoped context. Attach an image to use it directly in a block, or a file just for context.
+page-scoped context (the agent is told which document "this page" is). Attach an image to use it directly in a block,
+or a file just for context.
+
+**Editing existing pages** — the agent reads the page with `get_document` (content plus the `id` of every block),
+then proposes the edit with that document's `id`: changed top-level fields in `data`, and block changes as
+`operations` — `update`, `insert`, `remove` or `move` a block by id — so blocks it isn't touching stay exactly as they
+are. A blocks array sent in `data` on an update replaces the stored one, and is rejected if it would silently drop
+blocks it doesn't mention. The approval card shows what will change: create vs update, field before/after, and each
+block as new, changed (with the fields), moved or removed.
 
 **Over MCP** — point any MCP client at your site, authenticated as a restricted (non-admin) Payload user:
 
@@ -144,12 +155,26 @@ page-scoped context. Attach an image to use it directly in a block, or a file ju
 ```
 
 Exposed tools: `list_collections`, `get_collection_schema`, `list_blocks`, `get_block_schema`, `search_documents`,
-`propose_layout`, `revise_proposal`, `apply_proposal`.
+`get_document`, `propose_layout`, `revise_proposal`, `apply_proposal`.
+
+> **Approval over MCP is your MCP client's job.** The server can't show anyone an Approve button, so:
+>
+> - `apply_proposal` is annotated `destructiveHint: true`, `readOnlyHint: false` — clients that honour annotations
+>   (Claude Desktop, Claude Code) ask before running it. Don't auto-approve it in your client.
+> - `apply_proposal` only accepts the `proposalToken` returned by a successful `propose_layout`/`revise_proposal`
+>   for the **exact same arguments** (and the same user), valid for 30 minutes. An agent can't write content that
+>   was never validated, or swap in different content after you approved a proposal.
+> - Use a restricted Payload user for the API key — every read and write runs with that user's access rules.
 
 ## Guardrails
 
-- `apply_proposal` is the only tool that writes — only after validation, and, in chat, only after your approval.
-- `maxSteps` / `timeoutMs` bound how long and how far a single turn can run.
+- `apply_proposal` is the only tool that writes — only after validation, and, in chat, only after your approval
+  (over MCP: only with the token from the validated proposal, see above).
+- Proposals are validated *before* you approve them: required fields (against the merged document on update), array
+  and blocks `minRows`/`maxRows`, number/text limits, unknown fields and block types, and that every referenced
+  document exists and is readable by you.
+- `maxSteps` / `timeoutMs` bound how long and how far a single turn can run. `maxSteps` defaults to 25 — composing a
+  page of 6+ blocks with schema lookups typically takes 15–25 steps.
 - Debug mode is off by default; a pending approval is always shown regardless of that setting.
 
 ## Plugin options
@@ -159,7 +184,7 @@ Exposed tools: `list_collections`, `get_collection_schema`, `list_blocks`, `get_
 | `collections`    | `string[]`                                       | Restrict AI Conductor to specific collections. Defaults to every `blocks`-field collection. |
 | `blocksDir`      | `string`                                         | Directory to look up `<slug>.md` docs by convention.                               |
 | `blockDocs`      | `Array<{ slug: string; path: string }>`          | Explicit markdown doc paths for specific block slugs.                              |
-| `maxSteps`       | `number`                                         | Default max agent steps per chat turn (overridable from Settings).                 |
+| `maxSteps`       | `number`                                         | Default max agent steps per chat turn (default 25; overridable from Settings).     |
 | `getModelConfig` | `(req) => ModelConfig \| Promise<ModelConfig>`   | Fully custom BYOK resolution, taking priority over Settings and env vars.           |
 | `settingsAccess` | `Access`                                         | Who can view/edit the Settings screen (and its decrypted API key). Defaults to Payload's own default — any logged-in user — so set this for any real deployment. |
 | `disabled`       | `boolean`                                        | Disable the plugin without removing it from your config.                           |
@@ -177,13 +202,15 @@ pnpm dev                       # http://localhost:3400/admin
 
 ```sh
 pnpm lint
-pnpm test:int   # vitest — unit + integration
-pnpm test:e2e   # playwright — admin UI end to end
+pnpm test:int    # vitest — unit + integration
+pnpm test:e2e    # playwright — admin UI end to end
+pnpm test:pack   # npm pack → install the tarball in a clean project → import every entry point + tsc
 ```
 
 `dev/eval.int.spec.ts` runs the real agent loop against a live model with an LLM-judge rubric. It needs
 `AI_CONDUCTOR_PROVIDER`/`AI_CONDUCTOR_API_KEY`/`AI_CONDUCTOR_MODEL` and skips itself otherwise, so the rest of the
-suite stays green without a key.
+suite stays green without a key. Add `AI_CONDUCTOR_EVAL_55=1` (with an Anthropic key) to also run the full
+propose → approve → apply chat flow on `claude-sonnet-5-5` and `claude-opus-5-5`.
 
 ## License
 

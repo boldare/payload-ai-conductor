@@ -17,11 +17,17 @@ export type AiConductorSettings = {
   timeoutMs?: number
 }
 
-const encryptApiKey: FieldHook = ({ req, value }) => {
+/** Default max agent steps per chat turn — enough to compose a page of 6+ blocks with schema lookups. */
+export const DEFAULT_MAX_STEPS = 25
+
+// Keys pasted from a dashboard or password manager often carry a trailing newline/space, which the
+// provider then rejects as an invalid key ("invalid x-api-key") — trim before storing.
+export const encryptApiKey: FieldHook = ({ req, value }) => {
   if (!value || typeof value !== 'string') {
     return value
   }
-  return req.payload.encrypt(value)
+  const trimmed = value.trim()
+  return trimmed ? req.payload.encrypt(trimmed) : null
 }
 
 const decryptApiKey: FieldHook = ({ req, value }) => {
@@ -48,6 +54,7 @@ export const buildSettingsGlobal = (collectionOptions: string[], access?: Access
   access: access ? { read: access, update: access } : undefined,
   admin: {
     description: 'Bring-your-own-key model provider, collection scope, and safety guardrails for AI Conductor.',
+    group: 'AI Conductor',
   },
   fields: [
     {
@@ -62,7 +69,7 @@ export const buildSettingsGlobal = (collectionOptions: string[], access?: Access
     {
       name: 'model',
       type: 'text',
-      admin: { description: 'e.g. claude-sonnet-5, gpt-4o' },
+      admin: { description: 'Model id, e.g. claude-sonnet-5-5, claude-opus-5-5, gpt-5' },
     },
     {
       name: 'apiKey',
@@ -84,7 +91,15 @@ export const buildSettingsGlobal = (collectionOptions: string[], access?: Access
       hasMany: true,
       options: collectionOptions,
     },
-    { name: 'maxSteps', type: 'number', admin: { description: 'Defaults to 12.' }, max: 100, min: 1 },
+    {
+      name: 'maxSteps',
+      type: 'number',
+      admin: {
+        description: `Max tool-call steps per chat turn. Defaults to ${DEFAULT_MAX_STEPS} (or the plugin's \`maxSteps\` option). Composing a page of 6+ blocks typically takes 15–25.`,
+      },
+      max: 100,
+      min: 1,
+    },
     { name: 'timeoutMs', type: 'number', admin: { description: 'Per-turn timeout, in milliseconds.' }, min: 1000 },
     {
       name: 'debugMode',
@@ -96,6 +111,7 @@ export const buildSettingsGlobal = (collectionOptions: string[], access?: Access
       defaultValue: false,
     },
   ],
+  label: 'AI Conductor Settings',
 })
 
 export const getSettings = async (payload: Payload): Promise<AiConductorSettings> => {
@@ -124,8 +140,10 @@ export const resolveAllowedCollections = (
 }
 
 export const resolveModelConfigFromSettings = (settings: AiConductorSettings): ModelConfig | undefined => {
-  if (settings.provider && settings.apiKey && settings.model) {
-    return { apiKey: settings.apiKey, model: settings.model, provider: settings.provider }
+  const apiKey = settings.apiKey?.trim()
+  const model = settings.model?.trim()
+  if (settings.provider && apiKey && model) {
+    return { apiKey, model, provider: settings.provider }
   }
   return undefined
 }

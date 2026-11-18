@@ -5,6 +5,7 @@ import { getPayload } from 'payload'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import { createMcpEndpointHandler } from '../src/mcp/endpoint.js'
+import { PLUGIN_VERSION } from '../src/version.js'
 import { devUser } from './helpers/credentials.js'
 
 let payload: Payload
@@ -52,6 +53,20 @@ describe('MCP endpoint', () => {
     expect(res.status).toBe(401)
   })
 
+  test('reports the package version in its serverInfo', async () => {
+    const handler = createMcpEndpointHandler({ collections: ['pages'] })
+    const res = await handler(
+      jsonRpcRequest({
+        id: 0,
+        jsonrpc: '2.0',
+        method: 'initialize',
+        params: { capabilities: {}, clientInfo: { name: 'test', version: '0.0.0' }, protocolVersion: '2025-06-18' },
+      }),
+    )
+    const body = await readJsonRpcResult(res)
+    expect(body.result.serverInfo).toMatchObject({ name: 'ai-conductor', version: PLUGIN_VERSION })
+  })
+
   test('lists the registered tools for an authenticated caller', async () => {
     const handler = createMcpEndpointHandler({ collections: ['pages'] })
     const req = jsonRpcRequest({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
@@ -68,6 +83,7 @@ describe('MCP endpoint', () => {
         'list_blocks',
         'get_block_schema',
         'search_documents',
+        'get_document',
         'propose_layout',
         'revise_proposal',
         'apply_proposal',
@@ -125,26 +141,78 @@ describe('MCP endpoint', () => {
     expect(body.result.content[0].text).toContain('not available')
   })
 
-  test('apply_proposal writes a real document end to end', async () => {
+  const callTool = async (name: string, args: Record<string, unknown>) => {
     const handler = createMcpEndpointHandler({ collections: ['pages'] })
-    const req = jsonRpcRequest({
-      id: 5,
-      jsonrpc: '2.0',
-      method: 'tools/call',
-      params: {
-        arguments: {
-          collection: 'pages',
-          data: { title: 'From MCP', slug: 'from-mcp', layout: [{ blockType: 'hero', heading: 'Hi' }] },
-        },
-        name: 'apply_proposal',
-      },
+    const res = await handler(jsonRpcRequest({ id: 10, jsonrpc: '2.0', method: 'tools/call', params: { arguments: args, name } }))
+    const body = await readJsonRpcResult(res)
+    return { isError: Boolean(body.result.isError), parsed: JSON.parse(body.result.content[0].text) }
+  }
+
+  const proposal = {
+    collection: 'pages',
+    data: { title: 'From MCP', slug: 'from-mcp', layout: [{ blockType: 'hero', heading: 'Hi' }] },
+  }
+
+  test('apply_proposal is annotated as a destructive, non-read-only write', async () => {
+    const handler = createMcpEndpointHandler({ collections: ['pages'] })
+    const res = await handler(jsonRpcRequest({ id: 1, jsonrpc: '2.0', method: 'tools/list' }))
+    const body = await readJsonRpcResult(res)
+    const tools = body.result.tools as Array<{ annotations?: Record<string, boolean>; name: string }>
+
+    expect(tools.find((t) => t.name === 'apply_proposal')?.annotations).toMatchObject({
+      destructiveHint: true,
+      readOnlyHint: false,
+    })
+    expect(tools.find((t) => t.name === 'propose_layout')?.annotations).toMatchObject({ readOnlyHint: true })
+    expect(tools.find((t) => t.name === 'get_document')?.annotations).toMatchObject({ readOnlyHint: true })
+  })
+
+  test('apply_proposal without a proposalToken is refused and writes nothing', async () => {
+    const { isError, parsed } = await callTool('apply_proposal', {
+      ...proposal,
+      data: { ...proposal.data, slug: 'mcp-no-token' },
     })
 
-    const res = await handler(req)
-    const body = await readJsonRpcResult(res)
-    expect(body.result.isError).toBeFalsy()
-    const parsed = JSON.parse(body.result.content[0].text)
-    expect(parsed.success).toBe(true)
-    expect(parsed.doc.title).toBe('From MCP')
+    expect(isError).toBe(true)
+    expect(parsed.issues[0]).toContain('needs the proposalToken')
+    const { totalDocs } = await payload.count({ collection: 'pages', where: { slug: { equals: 'mcp-no-token' } } })
+    expect(totalDocs).toBe(0)
+  })
+
+  test('propose → approve → apply writes a real document end to end', async () => {
+    const proposed = await callTool('propose_layout', proposal)
+    expect(proposed.isError).toBe(false)
+    expect(proposed.parsed).toMatchObject({ changes: { mode: 'create' }, valid: true })
+    expect(typeof proposed.parsed.proposalToken).toBe('string')
+
+    const applied = await callTool('apply_proposal', { ...proposal, proposalToken: proposed.parsed.proposalToken })
+    expect(applied.isError).toBe(false)
+    expect(applied.parsed.success).toBe(true)
+    expect(applied.parsed.doc.title).toBe('From MCP')
+  })
+
+  test('a token for one proposal cannot apply different content', async () => {
+    const approved = { ...proposal, data: { ...proposal.data, slug: 'mcp-swap' } }
+    const proposed = await callTool('propose_layout', approved)
+
+    const swapped = { ...approved, data: { ...approved.data, title: 'Something else entirely' } }
+    const applied = await callTool('apply_proposal', { ...swapped, proposalToken: proposed.parsed.proposalToken })
+
+    expect(applied.isError).toBe(true)
+    expect(applied.parsed.issues[0]).toContain('does not match these arguments')
+    const { totalDocs } = await payload.count({ collection: 'pages', where: { slug: { equals: 'mcp-swap' } } })
+    expect(totalDocs).toBe(0)
+  })
+
+  test('get_document reads a page with its block ids', async () => {
+    const page = await payload.create({
+      collection: 'pages',
+      data: { title: 'MCP Read', slug: 'mcp-read', layout: [{ blockType: 'hero', heading: 'Read me' }] },
+    })
+
+    const { isError, parsed } = await callTool('get_document', { id: page.id, collection: 'pages' })
+    expect(isError).toBe(false)
+    expect(parsed.data.layout[0]).toMatchObject({ blockType: 'hero', heading: 'Read me' })
+    expect(parsed.data.layout[0].id).toBeTruthy()
   })
 })

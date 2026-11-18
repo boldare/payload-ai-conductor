@@ -129,48 +129,46 @@
   align-items: center;
   gap: 6px;
   background: var(--theme-elevation-50);
-  border: 1px solid var(--theme-border-color);
-  border-radius: 4px;
-  padding: 4px 8px;
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: 999px;
+  padding: 4px 6px 4px 10px;
   font-size: 0.9em;
 }
 
 .attachmentThumb {
-  width: 24px;
-  height: 24px;
-  border-radius: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   object-fit: cover;
 }
 
-.actionButton {
-  display: inline-block;
-  border: 1px solid var(--theme-border-color);
-  border-radius: 4px;
-  padding: 8px 12px;
-  font: inherit;
-  cursor: pointer;
-}
-
-.actionButton:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.formFooter {
-  display: flex;
+.chipRemove {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--theme-elevation-500);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
 }
 
-.sendControls {
-  display: flex;
-  gap: 8px;
+.chipRemove:hover {
+  background: var(--theme-elevation-150);
+  color: var(--theme-text);
 }
 
+/* Layout: header and composer keep their size, only the message list scrolls between them. */
 .page {
   display: flex;
   flex-direction: column;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 24px 0;
   /* Payload's own admin chrome (nav/header) isn't height-bounded, so without this the whole
      page scrolls instead of just the message list — pin our view to the viewport instead. */
   height: calc(100vh - var(--app-header-height));
@@ -185,11 +183,351 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 4px;
+  padding: 0 4px 16px 0;
 }
 
-.footer {
+/* The composer is a separate, bottom-pinned panel — a flex sibling of the list, never an overlay,
+   so it can't cover the last message however tall it grows. */
+.composer {
   flex-shrink: 0;
+  margin: 0 -24px;
+  padding: 12px 24px 14px;
+  background: var(--theme-bg);
+  border-top: 1px solid var(--theme-elevation-100);
+  box-shadow: 0 -8px 24px -16px rgb(0 0 0 / 35%);
+}
+
+.inputShell {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 6px;
+  background: var(--theme-input-bg, var(--theme-elevation-0));
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: 20px;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.inputShell:hover {
+  border-color: var(--theme-elevation-250);
+}
+
+.inputShell:focus-within {
+  border-color: var(--theme-success-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-success-500) 25%, transparent);
+}
+
+.textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 4px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--theme-text);
+  font: inherit;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: hidden;
+  box-shadow: none;
+}
+
+.textarea::placeholder {
+  color: var(--theme-elevation-400);
+}
+
+.iconButton,
+.sendButton,
+.stopButton {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease;
+}
+
+.iconButton {
+  background: transparent;
+  color: var(--theme-elevation-500);
+}
+
+.iconButton:hover {
+  background: var(--theme-elevation-100);
+  color: var(--theme-text);
+}
+
+.sendButton {
+  background: var(--theme-success-500);
+  color: #fff;
+}
+
+.sendButton:hover:not(:disabled) {
+  background: var(--theme-success-600, var(--theme-success-500));
+}
+
+.sendButton:disabled {
+  background: var(--theme-elevation-150);
+  color: var(--theme-elevation-400);
+  cursor: default;
+}
+
+.stopButton {
+  background: var(--theme-text);
+  color: var(--theme-bg);
+}
+
+.stopButton:hover {
+  opacity: 0.85;
+}
+
+.iconButton:focus-visible,
+.sendButton:focus-visible,
+.stopButton:focus-visible,
+.chipRemove:focus-visible,
+.primaryButton:focus-visible,
+.secondaryButton:focus-visible {
+  outline: 2px solid var(--theme-success-500);
+  outline-offset: 2px;
+}
+
+.composerHint {
+  margin: 6px 0 0;
+  color: var(--theme-elevation-400);
+  font-size: 0.75em;
+  text-align: center;
+}
+
+/* Agent activity ("working" bubble) */
+.activity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.activityStatus {
+  color: var(--theme-elevation-600);
+  font-size: 0.9em;
+}
+
+.activityNote {
+  margin-top: 6px;
+  color: var(--theme-elevation-500);
+  font-size: 0.85em;
+  font-style: italic;
+}
+
+.reasoning {
+  margin: 0 0 8px;
+  color: var(--theme-elevation-500);
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+/* Errors */
+.errorPanel {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--theme-error-500) 45%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--theme-error-500) 10%, var(--theme-bg));
+  color: var(--theme-text);
+}
+
+.errorPanel p {
+  margin: 4px 0 0;
+}
+
+.errorDetail {
+  display: block;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--theme-elevation-100);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+.errorLink {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--theme-success-500);
+  font-weight: 600;
+}
+
+/* Approval card */
+.approvalCard {
+  margin-block: 8px;
+  border: 1px solid var(--theme-elevation-200);
+  border-radius: 12px;
+  background: var(--theme-elevation-0);
+  overflow: hidden;
+}
+
+.approvalHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--theme-elevation-100);
+}
+
+.approvalBody {
+  padding: 10px 12px;
+}
+
+.approvalActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--theme-elevation-100);
+  background: var(--theme-elevation-50);
+}
+
+.approvalActions > :first-child {
+  margin-right: auto;
+}
+
+.approvalWarning {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--theme-warning-500, #d97706) 15%, transparent);
+}
+
+.approvalWarning ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.changeBadge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--theme-elevation-100);
+  color: var(--theme-elevation-700);
+  font-size: 0.75em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.changeBadge[data-status='added'] {
+  background: color-mix(in srgb, var(--theme-success-500) 18%, transparent);
+  color: var(--theme-success-700, var(--theme-success-500));
+}
+
+.changeBadge[data-status='updated'],
+.changeBadge[data-status='moved'] {
+  background: color-mix(in srgb, #3b82f6 18%, transparent);
+  color: #3b82f6;
+}
+
+.changeBadge[data-status='removed'] {
+  background: color-mix(in srgb, var(--theme-error-500) 18%, transparent);
+  color: var(--theme-error-500);
+}
+
+.changeLabel {
+  color: var(--theme-text);
+  font-weight: 500;
+}
+
+.changeMeta {
+  margin: 0;
+  color: var(--theme-elevation-500);
+  font-size: 0.9em;
+}
+
+.changeHeading {
+  margin: 10px 0 4px;
+  color: var(--theme-elevation-600);
+  font-size: 0.85em;
+  font-weight: 600;
+}
+
+.changeFields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.changeFields dt {
+  color: var(--theme-elevation-500);
+}
+
+.changeFields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.changeBefore {
+  color: var(--theme-elevation-500);
+  text-decoration: line-through;
+}
+
+.changeBlocks {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.changeBlock {
+  margin: 4px 0;
+}
+
+.changeBlock > * + * {
+  margin-left: 6px;
+}
+
+.changeBlock[data-status='unchanged'] {
+  opacity: 0.65;
+}
+
+.changeBlock[data-status='removed'] code,
+.changeBlock[data-status='removed'] .changeLabel {
+  text-decoration: line-through;
+}
+
+.primaryButton,
+.secondaryButton {
+  padding: 7px 16px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border: 1px solid var(--theme-success-500);
+  background: var(--theme-success-500);
+  color: #fff;
+}
+
+.secondaryButton {
+  border: 1px solid var(--theme-elevation-250);
+  background: transparent;
+  color: var(--theme-text);
+}
+
+.secondaryButton:hover {
+  background: var(--theme-elevation-100);
 }
 
 .messageRow {
@@ -214,7 +552,9 @@
 .bubbleUser {
   background: var(--theme-success-500);
   border-bottom-right-radius: 3px;
-  color: var(--theme-elevation-0);
+  /* Fixed brand background in both themes, so a fixed light text color too (the elevation scale
+     flips to near-black in dark mode). */
+  color: #fff;
 }
 
 .bubbleAssistant {

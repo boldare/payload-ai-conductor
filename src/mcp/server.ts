@@ -1,16 +1,22 @@
-import type { McpRequestContext, ServerContext, ToolAnnotations } from '@modelcontextprotocol/server'
+import type { McpRequestContext, ServerContext } from '@modelcontextprotocol/server'
 import type { Payload, TypedUser } from 'payload'
 
 import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
 import type { PayloadAiConductorConfig } from '../index.js'
-import type { ApplyResult, ProposalArgs, ProposalContext, ValidationResult } from '../tools/proposal.js'
+import type { ProposalArgs, ProposalContext, ValidationResult } from '../tools/proposal.js'
 
 import { getSettings, resolveAllowedCollections } from '../globals/settings.js'
 import { recordAppliedProposal } from '../tools/audit.js'
 import { resolveBlockMetadata } from '../tools/blockMetadata.js'
-import { searchDocuments } from '../tools/lookup.js'
+import {
+  getDocumentInputShape,
+  proposalInputShape,
+  searchDocumentsInputShape,
+  TOOL_DESCRIPTIONS,
+} from '../tools/definitions.js'
+import { getDocument, searchDocuments } from '../tools/lookup.js'
 import { applyProposal, proposeLayout, reviseProposal } from '../tools/proposal.js'
 import {
   asCollectionSlug,
@@ -20,6 +26,8 @@ import {
   findBlocksFields,
   isCollectionAllowed,
 } from '../tools/schema.js'
+import { PLUGIN_VERSION } from '../version.js'
+import { createProposalToken, verifyProposalToken } from './proposalToken.js'
 
 const userFromContext = (ctx: ServerContext): TypedUser | undefined => {
   return ctx.http?.authInfo?.extra?.user as TypedUser | undefined
@@ -34,7 +42,23 @@ const toolResult = (data: unknown, isError = false) => ({
 
 const notAvailable = (collection: string) => toolResult({ error: `Collection "${collection}" is not available.` }, true)
 
-type ProposalTool = (payload: Payload, args: ProposalArgs, context: ProposalContext) => Promise<ApplyResult | ValidationResult>
+type ValidateTool = (payload: Payload, args: ProposalArgs, context: ProposalContext) => Promise<ValidationResult>
+
+const NEXT_STEP_AFTER_VALIDATION =
+  'Show the user this changes summary and ask them to approve it. Only after they explicitly approve, call ' +
+  'apply_proposal with exactly the same arguments plus this proposalToken. If anything changes, run revise_proposal ' +
+  'again and get a new approval.'
+
+const TOKEN_ERRORS = {
+  expired: 'proposalToken has expired — run revise_proposal again and get the user’s approval before applying.',
+  malformed: 'proposalToken is not a valid token — use the one returned by propose_layout/revise_proposal.',
+  mismatch:
+    'proposalToken does not match these arguments — the proposal changed after it was validated. Run revise_proposal ' +
+    'with the new arguments and get the user’s approval again.',
+  missing:
+    'apply_proposal needs the proposalToken returned by propose_layout/revise_proposal for these exact arguments. ' +
+    'Validate the proposal first, show the user the changes, and apply only after they approve.',
+} as const
 
 export const buildMcpServer = (
   payload: Payload,
@@ -46,13 +70,13 @@ export const buildMcpServer = (
     const settings = await getSettings(payload)
     const allowedCollections = discoverCollections(payload.config, resolveAllowedCollections(options, settings))
 
-    const server = new McpServer({ name: 'ai-conductor', version: '1.0.0' })
+    const server = new McpServer({ name: 'ai-conductor', version: PLUGIN_VERSION })
 
     server.registerTool(
       'list_collections',
       {
         annotations: { readOnlyHint: true },
-        description: 'List the collections AI Conductor can read/write, with the name of each blocks-type field.',
+        description: TOOL_DESCRIPTIONS.list_collections,
       },
       () => {
         const collections = allowedCollections.map((slug) => ({
@@ -67,7 +91,7 @@ export const buildMcpServer = (
       'get_collection_schema',
       {
         annotations: { readOnlyHint: true },
-        description: "Get a collection's full field schema, including nested blocks fields.",
+        description: TOOL_DESCRIPTIONS.get_collection_schema,
         inputSchema: z.object({ collection: z.string() }),
       },
       ({ collection }) => {
@@ -82,7 +106,7 @@ export const buildMcpServer = (
       'list_blocks',
       {
         annotations: { readOnlyHint: true },
-        description: 'List the blocks available on a collection, with AI Conductor usage guidance for each.',
+        description: TOOL_DESCRIPTIONS.list_blocks,
         inputSchema: z.object({ collection: z.string(), field: z.string().optional() }),
       },
       ({ collection, field }) => {
@@ -110,7 +134,7 @@ export const buildMcpServer = (
       'get_block_schema',
       {
         annotations: { readOnlyHint: true },
-        description: 'Get the field schema and usage guidance for one block, by slug.',
+        description: TOOL_DESCRIPTIONS.get_block_schema,
         inputSchema: z.object({ slug: z.string(), collection: z.string(), field: z.string().optional() }),
       },
       ({ slug, collection, field }) => {
@@ -140,12 +164,8 @@ export const buildMcpServer = (
       'search_documents',
       {
         annotations: { readOnlyHint: true },
-        description: 'Search a collection for existing documents, e.g. to find a document to reference by ID.',
-        inputSchema: z.object({
-          collection: z.string(),
-          limit: z.number().optional(),
-          query: z.string().optional(),
-        }),
+        description: TOOL_DESCRIPTIONS.search_documents,
+        inputSchema: z.object(searchDocumentsInputShape),
       },
       async ({ collection, limit, query }, ctx) => {
         if (!isCollectionAllowed(collection, allowedCollections)) {
@@ -161,58 +181,91 @@ export const buildMcpServer = (
       },
     )
 
-    const proposalInputSchema = z.object({
-      id: z.union([z.string(), z.number()]).optional(),
-      collection: z.string(),
-      data: z.record(z.string(), z.unknown()),
-      locale: z.string().optional(),
-    })
+    server.registerTool(
+      'get_document',
+      {
+        annotations: { readOnlyHint: true },
+        description: TOOL_DESCRIPTIONS.get_document,
+        inputSchema: z.object({ ...getDocumentInputShape, locale: z.string().optional() }),
+      },
+      async ({ id, collection, locale }, ctx) => {
+        if (!isCollectionAllowed(collection, allowedCollections)) {
+          return notAvailable(collection)
+        }
+        const result = await getDocument(payload, { id, collection }, { locale, user: userFromContext(ctx) })
+        return toolResult(result, 'error' in result)
+      },
+    )
 
-    const registerProposalTool = (
-      name: string,
-      description: string,
-      tool: ProposalTool,
-      annotations: ToolAnnotations,
-    ) => {
-      server.registerTool(name, { annotations, description, inputSchema: proposalInputSchema }, async (args, ctx) => {
+    const proposalInputSchema = z.object({ ...proposalInputShape, locale: z.string().optional() })
+
+    const registerValidateTool = (name: 'propose_layout' | 'revise_proposal', tool: ValidateTool) => {
+      server.registerTool(
+        name,
+        { annotations: { readOnlyHint: true }, description: TOOL_DESCRIPTIONS[name], inputSchema: proposalInputSchema },
+        async (args, ctx) => {
+          if (!isCollectionAllowed(args.collection, allowedCollections)) {
+            return notAvailable(args.collection)
+          }
+          const user = userFromContext(ctx)
+          const result = await tool(
+            payload,
+            { data: args.data, operations: args.operations, target: { id: args.id, collection: args.collection } },
+            { locale: args.locale, user },
+          )
+          if (!result.valid || !user) {
+            return toolResult(result, !result.valid)
+          }
+          return toolResult({
+            ...result,
+            nextStep: NEXT_STEP_AFTER_VALIDATION,
+            proposalToken: createProposalToken(payload.secret, args, String(user.id)),
+          })
+        },
+      )
+    }
+
+    registerValidateTool('propose_layout', proposeLayout)
+    registerValidateTool('revise_proposal', reviseProposal)
+
+    server.registerTool(
+      'apply_proposal',
+      {
+        annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: false, readOnlyHint: false },
+        description:
+          `${TOOL_DESCRIPTIONS.apply_proposal} Writes to the live database. Requires the proposalToken returned by ` +
+          'propose_layout/revise_proposal for these exact arguments.',
+        inputSchema: proposalInputSchema.extend({
+          proposalToken: z
+            .string()
+            .optional()
+            .describe('Token from the propose_layout/revise_proposal call the user approved.'),
+        }),
+      },
+      async ({ proposalToken, ...args }, ctx) => {
         if (!isCollectionAllowed(args.collection, allowedCollections)) {
           return notAvailable(args.collection)
         }
-
         const user = userFromContext(ctx)
-        const result = await tool(
+        if (!proposalToken) {
+          return toolResult({ issues: [TOKEN_ERRORS.missing], success: false }, true)
+        }
+        const check = verifyProposalToken(payload.secret, proposalToken, args, String(user?.id ?? ''))
+        if (check !== 'ok') {
+          return toolResult({ issues: [TOKEN_ERRORS[check]], success: false }, true)
+        }
+
+        const result = await applyProposal(
           payload,
-          { data: args.data, target: { id: args.id, collection: args.collection } },
+          { data: args.data, operations: args.operations, target: { id: args.id, collection: args.collection } },
           { locale: args.locale, user },
         )
-
-        if (name === 'apply_proposal' && 'success' in result && result.success) {
+        if (result.success) {
           const docId = (result.doc as { id: number | string }).id
           await recordAppliedProposal(payload, { collection: args.collection, docId }, { source: 'mcp', user })
         }
-
-        const isError = 'valid' in result ? !result.valid : !result.success
-        return toolResult(result, isError)
-      })
-    }
-
-    registerProposalTool(
-      'propose_layout',
-      'Validate a proposed document layout/content without writing it. Returns validation issues if invalid.',
-      proposeLayout,
-      { readOnlyHint: true },
-    )
-    registerProposalTool(
-      'revise_proposal',
-      'Re-validate a revised version of a pending proposal, before it is applied.',
-      reviseProposal,
-      { readOnlyHint: true },
-    )
-    registerProposalTool(
-      'apply_proposal',
-      'Validate and write a proposal to the database. Only call this after the user has explicitly approved it.',
-      applyProposal,
-      { destructiveHint: true, idempotentHint: false, readOnlyHint: false },
+        return toolResult(result, !result.success)
+      },
     )
 
     return server
