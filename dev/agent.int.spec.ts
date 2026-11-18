@@ -2,9 +2,10 @@ import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import type { Payload, TypedUser } from 'payload'
 
 import config from '@payload-config'
+import { APICallError } from 'ai'
 import { getPayload } from 'payload'
 import { convertArrayToReadableStream, MockLanguageModelV4 } from 'ai/test'
-import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 
 import { buildAgentTools } from '../src/agent/tools.js'
 import { createChatEndpointHandler } from '../src/agent/chatEndpoint.js'
@@ -117,5 +118,55 @@ describe('chat endpoint', () => {
 
     const text = await res.text()
     expect(text).toContain('Hello from the mock model!')
+  })
+
+  const chatRequest = (body: unknown) => {
+    const req = new Request('http://localhost:3000/api/plugin/ai-conductor/chat', {
+      body: JSON.stringify(body),
+      method: 'POST',
+    }) as unknown as Parameters<ReturnType<typeof createChatEndpointHandler>>[0]
+    req.payload = payload
+    req.user = user
+    req.locale = undefined
+    return req
+  }
+  const hello = [{ id: '1', parts: [{ text: 'Hi', type: 'text' }], role: 'user' }]
+  test('no configured model answers with a structured, explainable error instead of a generic one', async () => {
+    vi.stubEnv('AI_CONDUCTOR_PROVIDER', '')
+    vi.stubEnv('AI_CONDUCTOR_API_KEY', '')
+    vi.stubEnv('AI_CONDUCTOR_MODEL', '')
+    try {
+      const res = await createChatEndpointHandler({ collections: ['pages'] })(chatRequest({ messages: hello }))
+      expect(res.status).toBe(400)
+      expect(await res.json()).toMatchObject({ code: 'model_not_configured' })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  test('a provider auth failure mid-stream reaches the client as invalid_api_key', async () => {
+    const mockModel = new MockLanguageModelV4({
+      doStream: async () => {
+        throw new APICallError({
+          data: { error: { message: 'invalid x-api-key', type: 'authentication_error' } },
+          message: 'Unauthorized',
+          requestBodyValues: {},
+          statusCode: 401,
+          url: 'https://api.anthropic.com/v1/messages',
+        })
+      },
+    })
+    const handler = createChatEndpointHandler(
+      { collections: ['pages'], getModelConfig: () => ({ apiKey: 'bad', model: 'm', provider: 'anthropic' }) },
+      { buildLanguageModel: () => mockModel },
+    )
+
+    const text = await (await handler(chatRequest({ messages: hello }))).text()
+    const errorChunk = text
+      .split('\n')
+      .filter((line) => line.startsWith('data: {'))
+      .map((line) => JSON.parse(line.slice(6)))
+      .find((chunk) => chunk.type === 'error')
+    expect(JSON.parse(errorChunk.errorText)).toEqual({ code: 'invalid_api_key', message: 'invalid x-api-key' })
   })
 })

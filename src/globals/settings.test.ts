@@ -1,6 +1,8 @@
+import type { FieldHookArgs } from 'payload'
+
 import { describe, expect, test } from 'vitest'
 
-import { buildSettingsGlobal, resolveAllowedCollections, resolveModelConfigFromSettings } from './settings.js'
+import { buildSettingsGlobal, encryptApiKey, resolveAllowedCollections, resolveModelConfigFromSettings } from './settings.js'
 
 describe('buildSettingsGlobal', () => {
   test('leaves access unset (Payload default) when no access rule is given', () => {
@@ -19,6 +21,20 @@ describe('buildSettingsGlobal', () => {
     const global = buildSettingsGlobal(['pages', 'media'])
     const collectionsField = global.fields.find((field) => 'name' in field && field.name === 'collections')
     expect(collectionsField).toMatchObject({ type: 'select', hasMany: true, options: ['pages', 'media'] })
+  })
+})
+
+describe('encryptApiKey', () => {
+  const run = (value: unknown) =>
+    encryptApiKey({ req: { payload: { encrypt: (v: string) => `enc(${v})` } }, value } as unknown as FieldHookArgs)
+
+  test('trims whitespace a pasted key often carries before encrypting it', () => {
+    expect(run('  sk-ant-test\n')).toBe('enc(sk-ant-test)')
+  })
+
+  test('stores nothing for a whitespace-only value and passes empty values through', () => {
+    expect(run('   ')).toBeNull()
+    expect(run(undefined)).toBeUndefined()
   })
 })
 
@@ -43,6 +59,12 @@ describe('resolveAllowedCollections', () => {
 })
 
 describe('resolveModelConfigFromSettings', () => {
+  test('trims a stored key and model id (keys saved before trimming was added)', () => {
+    expect(resolveModelConfigFromSettings({ apiKey: ' sk-test\n', model: ' claude-sonnet-5-5 ', provider: 'anthropic' })).toEqual(
+      { apiKey: 'sk-test', model: 'claude-sonnet-5-5', provider: 'anthropic' },
+    )
+  })
+
   test('returns undefined when any required field is missing', () => {
     expect(resolveModelConfigFromSettings({ model: 'claude-sonnet-5', provider: 'anthropic' })).toBeUndefined()
   })

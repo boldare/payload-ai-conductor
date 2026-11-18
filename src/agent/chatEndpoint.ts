@@ -7,7 +7,9 @@ import type { PayloadAiConductorConfig } from '../index.js'
 import type { ModelConfig } from './provider.js'
 
 import { getSettings, resolveModelConfigFromSettings } from '../globals/settings.js'
+import { serializeChatError } from '../shared/chatErrors.js'
 import { recordConversationMessages } from '../tools/audit.js'
+import { classifyChatError } from './errors.js'
 import { buildLanguageModel, resolveModelConfigFromEnv } from './provider.js'
 import { buildAgentTools } from './tools.js'
 
@@ -41,10 +43,21 @@ export const createChatEndpointHandler = (
     const conversationId = body.id
     const settings = await getSettings(req.payload)
 
-    const modelConfig = options.getModelConfig
-      ? await options.getModelConfig(req)
-      : resolveModelConfigFromSettings(settings) ?? resolveModelConfigFromEnv()
-    const model = resolveModel(modelConfig)
+    // Configuration problems are known before anything streams — answer them as a plain JSON error
+    // the UI can explain ("no model configured" + a link to Settings) instead of a stream failure.
+    let model: LanguageModel
+    try {
+      const modelConfig = options.getModelConfig
+        ? await options.getModelConfig(req)
+        : (resolveModelConfigFromSettings(settings) ?? resolveModelConfigFromEnv())
+      model = resolveModel(modelConfig)
+    } catch (error) {
+      return new Response(serializeChatError(classifyChatError(error)), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 400,
+      })
+    }
+
     const tools = await buildAgentTools(req.payload, options, { conversationId, locale: req.locale ?? undefined, user })
 
     const maxSteps = settings.maxSteps ?? options.maxSteps ?? DEFAULT_MAX_STEPS
@@ -67,6 +80,7 @@ export const createChatEndpointHandler = (
     })
 
     return result.toUIMessageStreamResponse({
+      onError: (error) => serializeChatError(classifyChatError(error)),
       onFinish: conversationId
         ? ({ messages }) => recordConversationMessages(req.payload, messages, { conversationId, user })
         : undefined,

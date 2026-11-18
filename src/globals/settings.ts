@@ -17,11 +17,14 @@ export type AiConductorSettings = {
   timeoutMs?: number
 }
 
-const encryptApiKey: FieldHook = ({ req, value }) => {
+// Keys pasted from a dashboard or password manager often carry a trailing newline/space, which the
+// provider then rejects as an invalid key ("invalid x-api-key") — trim before storing.
+export const encryptApiKey: FieldHook = ({ req, value }) => {
   if (!value || typeof value !== 'string') {
     return value
   }
-  return req.payload.encrypt(value)
+  const trimmed = value.trim()
+  return trimmed ? req.payload.encrypt(trimmed) : null
 }
 
 const decryptApiKey: FieldHook = ({ req, value }) => {
@@ -124,8 +127,10 @@ export const resolveAllowedCollections = (
 }
 
 export const resolveModelConfigFromSettings = (settings: AiConductorSettings): ModelConfig | undefined => {
-  if (settings.provider && settings.apiKey && settings.model) {
-    return { apiKey: settings.apiKey, model: settings.model, provider: settings.provider }
+  const apiKey = settings.apiKey?.trim()
+  const model = settings.model?.trim()
+  if (settings.provider && apiKey && model) {
+    return { apiKey, model, provider: settings.provider }
   }
   return undefined
 }

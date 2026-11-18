@@ -2,6 +2,7 @@ import type { UIMessage } from 'ai'
 
 import { describe, expect, test } from 'vitest'
 
+import { describeChatError } from './chatErrorCopy.js'
 import { getActivity, isPartVisible, shouldSubmitOnKeyDown } from './chatState.js'
 
 type Part = UIMessage['parts'][number]
@@ -103,5 +104,20 @@ describe('shouldSubmitOnKeyDown', () => {
 
   test('never when sending is disabled (empty, streaming or uploading)', () => {
     expect(shouldSubmitOnKeyDown(enter, false)).toBe(false)
+  })
+})
+
+describe('describeChatError', () => {
+  test('explains each failure mode, with a Settings link where Settings is the fix', () => {
+    const notConfigured = describeChatError(new Error('{"code":"model_not_configured","message":"AI Conductor: no model configured."}'))
+    expect(notConfigured).toMatchObject({ showSettingsLink: true, title: 'No AI model is configured' })
+
+    const badKey = describeChatError(new Error('{"code":"invalid_api_key","message":"invalid x-api-key"}'))
+    expect(badKey).toMatchObject({ detail: 'invalid x-api-key', showSettingsLink: true })
+
+    const offline = describeChatError(new Error('{"code":"connection_failed","message":"Cannot connect to API: ETIMEDOUT"}'))
+    expect(offline).toMatchObject({ showSettingsLink: false, title: 'Can’t reach the model provider' })
+
+    expect(describeChatError(new Error('An error occurred.'))).toMatchObject({ detail: undefined, title: 'Something went wrong' })
   })
 })

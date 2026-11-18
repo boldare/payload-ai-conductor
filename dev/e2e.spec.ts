@@ -46,16 +46,20 @@ test('the document-controls button deep-links into the chat view with doc contex
   await expect(page.getByText('pages', { exact: false })).toBeVisible()
 })
 
-test('sending a message without a configured model surfaces an error instead of hanging silently', async ({
-  page,
-}) => {
+test('sending without a configured model explains the problem and links to Settings', async ({ page }) => {
   await login(page)
   await page.goto('/admin/ai-conductor')
 
   await page.getByPlaceholder('Ask AI Conductor to build or edit a page...').fill('Build me a landing page')
   await page.getByRole('button', { name: 'Send' }).click()
 
-  await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 })
+  // Scoped by text: Next's route announcer is also a role="alert" region.
+  const alert = page.getByRole('alert').filter({ hasText: 'No AI model is configured' })
+  await expect(alert).toBeVisible({ timeout: 15_000 })
+  await expect(alert.getByRole('link', { name: 'Open AI Conductor Settings' })).toHaveAttribute(
+    'href',
+    '/admin/globals/ai-conductor-settings',
+  )
 })
 
 test.describe('composer', () => {

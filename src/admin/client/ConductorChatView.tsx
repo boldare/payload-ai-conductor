@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm'
 import type { Activity } from './chatState.js'
 
 import { CHAT_ENDPOINT_PATH, UPLOAD_ENDPOINT_PATH } from '../../constants.js'
+import { describeChatError } from './chatErrorCopy.js'
 import {
   getActivity,
   isApprovalRequest,
@@ -80,6 +81,22 @@ const ThinkingBubble = ({ activity }: { activity: Activity }) => (
     </div>
   </div>
 )
+
+const ErrorPanel = ({ error, settingsUrl }: { error: Error; settingsUrl: string }) => {
+  const copy = describeChatError(error)
+  return (
+    <div className={styles.errorPanel} role="alert">
+      <strong>{copy.title}</strong>
+      <p>{copy.hint}</p>
+      {copy.detail && <code className={styles.errorDetail}>{copy.detail}</code>}
+      {copy.showSettingsLink && (
+        <a className={styles.errorLink} href={settingsUrl}>
+          Open AI Conductor Settings
+        </a>
+      )}
+    </div>
+  )
+}
 
 const MessagePart = ({
   onRespond,
@@ -161,6 +178,7 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
   const api = config.routes.api
+  const settingsUrl = `${config.routes.admin}/globals/ai-conductor-settings`
 
   const { addToolApprovalResponse, error, messages, sendMessage, status, stop } = useChat({
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
@@ -326,11 +344,7 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
             )),
         )}
         {activity.visible && <ThinkingBubble activity={activity} />}
-        {error && (
-          <p className={styles.errorText} role="alert">
-            {error.message || 'Something went wrong talking to the model.'}
-          </p>
-        )}
+        {error && <ErrorPanel error={error} settingsUrl={settingsUrl} />}
         <div ref={messagesEndRef} />
       </div>
 
