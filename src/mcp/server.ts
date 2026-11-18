@@ -26,6 +26,7 @@ import {
   findBlocksFields,
   isCollectionAllowed,
 } from '../tools/schema.js'
+import { PLUGIN_VERSION } from '../version.js'
 import { createProposalToken, verifyProposalToken } from './proposalToken.js'
 
 const userFromContext = (ctx: ServerContext): TypedUser | undefined => {
@@ -69,7 +70,7 @@ export const buildMcpServer = (
     const settings = await getSettings(payload)
     const allowedCollections = discoverCollections(payload.config, resolveAllowedCollections(options, settings))
 
-    const server = new McpServer({ name: 'ai-conductor', version: '1.0.0' })
+    const server = new McpServer({ name: 'ai-conductor', version: PLUGIN_VERSION })
 
     server.registerTool(
       'list_collections',

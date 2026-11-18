@@ -65,7 +65,8 @@
     "pretest:int": "rimraf dev/test.db dev/test.db-*",
     "test:int": "vitest run",
     "prepack": "pnpm clean && pnpm build",
-    "test:pack": "node scripts/pack-smoke.mjs"
+    "test:pack": "node scripts/pack-smoke.mjs",
+    "version": "node scripts/sync-version.mjs && git add src/version.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.96",

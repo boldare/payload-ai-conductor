@@ -5,6 +5,7 @@ import { getPayload } from 'payload'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import { createMcpEndpointHandler } from '../src/mcp/endpoint.js'
+import { PLUGIN_VERSION } from '../src/version.js'
 import { devUser } from './helpers/credentials.js'
 
 let payload: Payload
@@ -50,6 +51,20 @@ describe('MCP endpoint', () => {
 
     const res = await handler(req)
     expect(res.status).toBe(401)
+  })
+
+  test('reports the package version in its serverInfo', async () => {
+    const handler = createMcpEndpointHandler({ collections: ['pages'] })
+    const res = await handler(
+      jsonRpcRequest({
+        id: 0,
+        jsonrpc: '2.0',
+        method: 'initialize',
+        params: { capabilities: {}, clientInfo: { name: 'test', version: '0.0.0' }, protocolVersion: '2025-06-18' },
+      }),
+    )
+    const body = await readJsonRpcResult(res)
+    expect(body.result.serverInfo).toMatchObject({ name: 'ai-conductor', version: PLUGIN_VERSION })
   })
 
   test('lists the registered tools for an authenticated caller', async () => {
