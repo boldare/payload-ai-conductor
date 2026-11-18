@@ -177,8 +177,9 @@ pnpm dev                       # http://localhost:3400/admin
 
 ```sh
 pnpm lint
-pnpm test:int   # vitest — unit + integration
-pnpm test:e2e   # playwright — admin UI end to end
+pnpm test:int    # vitest — unit + integration
+pnpm test:e2e    # playwright — admin UI end to end
+pnpm test:pack   # npm pack → install the tarball in a clean project → import every entry point + tsc
 ```
 
 `dev/eval.int.spec.ts` runs the real agent loop against a live model with an LLM-judge rubric. It needs

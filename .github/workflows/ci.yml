@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Integration + unit tests
+        run: pnpm test:int
+        env:
+          PAYLOAD_SECRET: ci-secret
+      # Packs the plugin the way `npm publish` does and imports every entry point from a clean
+      # project — the check that would have caught the unimportable 1.0.0 release.
+      - name: Pack smoke test
+        run: pnpm test:pack
