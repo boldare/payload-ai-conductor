@@ -157,9 +157,19 @@ block as new, changed (with the fields), moved or removed.
 Exposed tools: `list_collections`, `get_collection_schema`, `list_blocks`, `get_block_schema`, `search_documents`,
 `get_document`, `propose_layout`, `revise_proposal`, `apply_proposal`.
 
+> **Approval over MCP is your MCP client's job.** The server can't show anyone an Approve button, so:
+>
+> - `apply_proposal` is annotated `destructiveHint: true`, `readOnlyHint: false` — clients that honour annotations
+>   (Claude Desktop, Claude Code) ask before running it. Don't auto-approve it in your client.
+> - `apply_proposal` only accepts the `proposalToken` returned by a successful `propose_layout`/`revise_proposal`
+>   for the **exact same arguments** (and the same user), valid for 30 minutes. An agent can't write content that
+>   was never validated, or swap in different content after you approved a proposal.
+> - Use a restricted Payload user for the API key — every read and write runs with that user's access rules.
+
 ## Guardrails
 
-- `apply_proposal` is the only tool that writes — only after validation, and, in chat, only after your approval.
+- `apply_proposal` is the only tool that writes — only after validation, and, in chat, only after your approval
+  (over MCP: only with the token from the validated proposal, see above).
 - Proposals are validated *before* you approve them: required fields (against the merged document on update), array
   and blocks `minRows`/`maxRows`, number/text limits, unknown fields and block types, and that every referenced
   document exists and is readable by you.

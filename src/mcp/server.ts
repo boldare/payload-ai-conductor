@@ -1,11 +1,11 @@
-import type { McpRequestContext, ServerContext, ToolAnnotations } from '@modelcontextprotocol/server'
+import type { McpRequestContext, ServerContext } from '@modelcontextprotocol/server'
 import type { Payload, TypedUser } from 'payload'
 
 import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
 import type { PayloadAiConductorConfig } from '../index.js'
-import type { ApplyResult, ProposalArgs, ProposalContext, ValidationResult } from '../tools/proposal.js'
+import type { ProposalArgs, ProposalContext, ValidationResult } from '../tools/proposal.js'
 
 import { getSettings, resolveAllowedCollections } from '../globals/settings.js'
 import { recordAppliedProposal } from '../tools/audit.js'
@@ -26,6 +26,7 @@ import {
   findBlocksFields,
   isCollectionAllowed,
 } from '../tools/schema.js'
+import { createProposalToken, verifyProposalToken } from './proposalToken.js'
 
 const userFromContext = (ctx: ServerContext): TypedUser | undefined => {
   return ctx.http?.authInfo?.extra?.user as TypedUser | undefined
@@ -40,7 +41,23 @@ const toolResult = (data: unknown, isError = false) => ({
 
 const notAvailable = (collection: string) => toolResult({ error: `Collection "${collection}" is not available.` }, true)
 
-type ProposalTool = (payload: Payload, args: ProposalArgs, context: ProposalContext) => Promise<ApplyResult | ValidationResult>
+type ValidateTool = (payload: Payload, args: ProposalArgs, context: ProposalContext) => Promise<ValidationResult>
+
+const NEXT_STEP_AFTER_VALIDATION =
+  'Show the user this changes summary and ask them to approve it. Only after they explicitly approve, call ' +
+  'apply_proposal with exactly the same arguments plus this proposalToken. If anything changes, run revise_proposal ' +
+  'again and get a new approval.'
+
+const TOKEN_ERRORS = {
+  expired: 'proposalToken has expired — run revise_proposal again and get the user’s approval before applying.',
+  malformed: 'proposalToken is not a valid token — use the one returned by propose_layout/revise_proposal.',
+  mismatch:
+    'proposalToken does not match these arguments — the proposal changed after it was validated. Run revise_proposal ' +
+    'with the new arguments and get the user’s approval again.',
+  missing:
+    'apply_proposal needs the proposalToken returned by propose_layout/revise_proposal for these exact arguments. ' +
+    'Validate the proposal first, show the user the changes, and apply only after they approve.',
+} as const
 
 export const buildMcpServer = (
   payload: Payload,
@@ -181,44 +198,74 @@ export const buildMcpServer = (
 
     const proposalInputSchema = z.object({ ...proposalInputShape, locale: z.string().optional() })
 
-    const registerProposalTool = (
-      name: 'apply_proposal' | 'propose_layout' | 'revise_proposal',
-      tool: ProposalTool,
-      annotations: ToolAnnotations,
-    ) => {
+    const registerValidateTool = (name: 'propose_layout' | 'revise_proposal', tool: ValidateTool) => {
       server.registerTool(
         name,
-        { annotations, description: TOOL_DESCRIPTIONS[name], inputSchema: proposalInputSchema },
+        { annotations: { readOnlyHint: true }, description: TOOL_DESCRIPTIONS[name], inputSchema: proposalInputSchema },
         async (args, ctx) => {
           if (!isCollectionAllowed(args.collection, allowedCollections)) {
             return notAvailable(args.collection)
           }
-
           const user = userFromContext(ctx)
           const result = await tool(
             payload,
             { data: args.data, operations: args.operations, target: { id: args.id, collection: args.collection } },
             { locale: args.locale, user },
           )
-
-          if (name === 'apply_proposal' && 'success' in result && result.success) {
-            const docId = (result.doc as { id: number | string }).id
-            await recordAppliedProposal(payload, { collection: args.collection, docId }, { source: 'mcp', user })
+          if (!result.valid || !user) {
+            return toolResult(result, !result.valid)
           }
-
-          const isError = 'valid' in result ? !result.valid : !result.success
-          return toolResult(result, isError)
+          return toolResult({
+            ...result,
+            nextStep: NEXT_STEP_AFTER_VALIDATION,
+            proposalToken: createProposalToken(payload.secret, args, String(user.id)),
+          })
         },
       )
     }
 
-    registerProposalTool('propose_layout', proposeLayout, { readOnlyHint: true })
-    registerProposalTool('revise_proposal', reviseProposal, { readOnlyHint: true })
-    registerProposalTool('apply_proposal', applyProposal, {
-      destructiveHint: true,
-      idempotentHint: false,
-      readOnlyHint: false,
-    })
+    registerValidateTool('propose_layout', proposeLayout)
+    registerValidateTool('revise_proposal', reviseProposal)
+
+    server.registerTool(
+      'apply_proposal',
+      {
+        annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: false, readOnlyHint: false },
+        description:
+          `${TOOL_DESCRIPTIONS.apply_proposal} Writes to the live database. Requires the proposalToken returned by ` +
+          'propose_layout/revise_proposal for these exact arguments.',
+        inputSchema: proposalInputSchema.extend({
+          proposalToken: z
+            .string()
+            .optional()
+            .describe('Token from the propose_layout/revise_proposal call the user approved.'),
+        }),
+      },
+      async ({ proposalToken, ...args }, ctx) => {
+        if (!isCollectionAllowed(args.collection, allowedCollections)) {
+          return notAvailable(args.collection)
+        }
+        const user = userFromContext(ctx)
+        if (!proposalToken) {
+          return toolResult({ issues: [TOKEN_ERRORS.missing], success: false }, true)
+        }
+        const check = verifyProposalToken(payload.secret, proposalToken, args, String(user?.id ?? ''))
+        if (check !== 'ok') {
+          return toolResult({ issues: [TOKEN_ERRORS[check]], success: false }, true)
+        }
+
+        const result = await applyProposal(
+          payload,
+          { data: args.data, operations: args.operations, target: { id: args.id, collection: args.collection } },
+          { locale: args.locale, user },
+        )
+        if (result.success) {
+          const docId = (result.doc as { id: number | string }).id
+          await recordAppliedProposal(payload, { collection: args.collection, docId }, { source: 'mcp', user })
+        }
+        return toolResult(result, !result.success)
+      },
+    )
 
     return server
   }
