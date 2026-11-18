@@ -192,6 +192,32 @@
   flex-shrink: 0;
 }
 
+/* Agent activity ("working" bubble) */
+.activity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.activityStatus {
+  color: var(--theme-elevation-600);
+  font-size: 0.9em;
+}
+
+.activityNote {
+  margin-top: 6px;
+  color: var(--theme-elevation-500);
+  font-size: 0.85em;
+  font-style: italic;
+}
+
+.reasoning {
+  margin: 0 0 8px;
+  color: var(--theme-elevation-500);
+  font-size: 0.9em;
+  font-style: italic;
+}
+
 .messageRow {
   display: flex;
   margin-block: 10px;

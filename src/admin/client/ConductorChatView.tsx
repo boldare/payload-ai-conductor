@@ -10,7 +10,10 @@ import React, { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import type { Activity } from './chatState.js'
+
 import { CHAT_ENDPOINT_PATH, UPLOAD_ENDPOINT_PATH } from '../../constants.js'
+import { getActivity, isApprovalRequest, isPartVisible, isToolPart, splitIntoSteps, toolNameOf } from './chatState.js'
 import styles from './ConductorChatView.module.css'
 
 type UploadedAttachment = { collection: string; id: number | string; mimeType: string; name: string; url?: string }
@@ -32,57 +35,19 @@ const fileToDataUrl = (file: File): Promise<string> =>
     reader.readAsDataURL(file)
   })
 
-const isApprovalRequest = (part: UIMessage['parts'][number]): part is {
-  approval: { id: string }
-  state: 'approval-requested'
-} & UIMessage['parts'][number] => 'state' in part && part.state === 'approval-requested'
-
-const isToolPart = (part: UIMessage['parts'][number]): boolean =>
-  part.type.startsWith('tool-') || part.type === 'dynamic-tool'
-
-// Tool-call activity (list_blocks, propose_layout, ...) — and anything else MessagePart doesn't
-// render as real content, like reasoning traces — is debug info most users don't need to see, so
-// it's hidden unless debug mode is on. A pending approval is never just "debug info" though: the
-// user has to act on it, so it always stays visible regardless of this setting. Allowlisting the
-// real content types (rather than just excluding tool parts) also avoids leaving an empty bubble
-// behind for part types MessagePart has no renderer for.
-const isPartVisible = (part: UIMessage['parts'][number], debugMode: boolean): boolean => {
-  if (part.type === 'text' || part.type === 'file') {
-    return true
-  }
-  if (isToolPart(part)) {
-    return debugMode || isApprovalRequest(part)
-  }
-  return debugMode
-}
-
-// A message's parts span one or more model "steps" (tool call -> tool result -> more text, etc.),
-// marked by `step-start` parts. Rendering each step as its own bubble means content that arrives
-// later (e.g. after a tool-approval resumes) shows up as a new message instead of silently growing
-// a bubble the user already read.
-const splitIntoSteps = (parts: UIMessage['parts']): UIMessage['parts'][] => {
-  const steps: UIMessage['parts'][] = [[]]
-  for (const part of parts) {
-    if (part.type === 'step-start') {
-      if (steps[steps.length - 1].length > 0) {
-        steps.push([])
-      }
-      continue
-    }
-    steps[steps.length - 1].push(part)
-  }
-  return steps.filter((step) => step.length > 0)
-}
-
-const ThinkingBubble = () => (
+const ThinkingBubble = ({ activity }: { activity: Activity }) => (
   <div className={`${styles.messageRow} ${styles.messageRowAssistant}`}>
     <div className={`${styles.bubble} ${styles.bubbleAssistant}`}>
       <div className={styles.messageLabel}>AI Conductor</div>
-      <div aria-label="AI Conductor is thinking" className={styles.thinkingDots} role="status">
-        <span />
-        <span />
-        <span />
+      <div aria-label={activity.status ?? 'AI Conductor is working'} className={styles.activity} role="status">
+        <span className={styles.thinkingDots}>
+          <span />
+          <span />
+          <span />
+        </span>
+        {activity.status && <span className={styles.activityStatus}>{activity.status}</span>}
       </div>
+      {activity.note && <div className={styles.activityNote}>{activity.note}</div>}
     </div>
   </div>
 )
@@ -102,6 +67,10 @@ const MessagePart = ({
     )
   }
 
+  if (part.type === 'reasoning') {
+    return <p className={styles.reasoning}>{part.text}</p>
+  }
+
   if (part.type === 'file') {
     return part.mediaType.startsWith('image/') ? (
       <img alt={part.filename ?? 'Attached image'} className={styles.messageImage} src={part.url} />
@@ -116,7 +85,6 @@ const MessagePart = ({
   }
 
   if (isToolPart(part)) {
-    const toolName = part.type === 'dynamic-tool' ? part.toolName : part.type.slice('tool-'.length)
     const state = 'state' in part ? part.state : undefined
     const hasDetails = ('output' in part && part.output != null) || ('errorText' in part && Boolean(part.errorText))
 
@@ -124,7 +92,7 @@ const MessagePart = ({
       <div className={styles.toolCard}>
         <details>
           <summary className={styles.toolSummary}>
-            <strong>{toolName}</strong> <span className={styles.toolMeta}>({state})</span>
+            <strong>{toolNameOf(part)}</strong> <span className={styles.toolMeta}>({state})</span>
           </summary>
           {hasDetails ? (
             <>
@@ -169,16 +137,14 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
   })
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages])
 
   const isStreaming = status === 'streaming' || status === 'submitted'
   const isUploading = attachments.some((attachment) => attachment.status === 'uploading')
+  const activity = getActivity(messages, isStreaming)
 
-  const lastMessage = messages.at(-1)
-  const lastPart = lastMessage?.parts.at(-1)
-  const isThinking = isStreaming && (!lastMessage || lastMessage.role !== 'assistant' || !lastPart || lastPart.type === 'step-start')
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: 'end' })
+  }, [messages, activity.visible])
 
   const uploadAttachment = async (attachment: Attachment) => {
     try {
@@ -293,7 +259,7 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
               </div>
             )),
         )}
-        {isThinking && <ThinkingBubble />}
+        {activity.visible && <ThinkingBubble activity={activity} />}
         <div ref={messagesEndRef} />
       </div>
 
