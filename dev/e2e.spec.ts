@@ -125,3 +125,83 @@ test.describe('composer', () => {
     expect(lastMessage.y + lastMessage.height).toBeLessThanOrEqual(composer.y)
   })
 })
+
+// The chat stream is replayed from a fixture (no model needed); the preview behind the approval card
+// is real — it diffs the proposal against the stored page through the plugin's own endpoint.
+test('the approval card shows what an update will change, block by block', async ({ page }) => {
+  await login(page)
+
+  const created = await page.request.post('/api/pages', {
+    data: {
+      title: 'Approval Card Page',
+      slug: `approval-card-${Date.now()}`,
+      layout: [
+        { blockType: 'hero', heading: 'Plain hero' },
+        { blockType: 'cta', buttonHref: '/go', buttonLabel: 'Go', heading: 'Call to action' },
+      ],
+    },
+  })
+  expect(created.ok()).toBe(true)
+  const { doc } = (await created.json()) as { doc: { id: number; layout: Array<{ id: string }> } }
+  const heroId = doc.layout[0].id
+
+  const sse = (chunks: unknown[]) =>
+    chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n'
+  const streamHeaders = { 'content-type': 'text/event-stream', 'x-vercel-ai-ui-message-stream': 'v1' }
+
+  const chatBodies: Array<{ messages: Array<{ parts: Array<Record<string, unknown>> }> }> = []
+  await page.route('**/api/plugin/ai-conductor/chat', async (route) => {
+    chatBodies.push(route.request().postDataJSON())
+    const chunks =
+      chatBodies.length === 1
+        ? [
+            { type: 'start', messageId: 'assistant-1' },
+            { type: 'start-step' },
+            {
+              type: 'tool-input-available',
+              input: {
+                id: doc.id,
+                collection: 'pages',
+                operations: [{ blockId: heroId, data: { heading: 'A punchier hero' }, op: 'update' }],
+              },
+              toolCallId: 'call-apply',
+              toolName: 'apply_proposal',
+            },
+            { type: 'tool-approval-request', approvalId: 'approval-1', toolCallId: 'call-apply' },
+            { type: 'finish-step' },
+            { type: 'finish', finishReason: 'tool-calls' },
+          ]
+        : [
+            { type: 'start', messageId: 'assistant-1' },
+            { type: 'start-step' },
+            { type: 'tool-output-available', output: { success: true }, toolCallId: 'call-apply' },
+            { type: 'finish-step' },
+            { type: 'start-step' },
+            { type: 'text-start', id: 't1' },
+            { type: 'text-delta', delta: 'Done — the hero is updated.', id: 't1' },
+            { type: 'text-end', id: 't1' },
+            { type: 'finish-step' },
+            { type: 'finish', finishReason: 'stop' },
+          ]
+    await route.fulfill({ body: sse(chunks), headers: streamHeaders, status: 200 })
+  })
+
+  await page.goto(`/admin/ai-conductor?collection=pages&id=${doc.id}`)
+  await page.getByRole('textbox', { name: 'Message' }).fill('Make the hero punchier')
+  await page.getByRole('textbox', { name: 'Message' }).press('Enter')
+
+  const card = page.getByRole('group', { name: 'Proposed change awaiting approval' })
+  await expect(card).toContainText('Update')
+  await expect(card).toContainText(`pages #${doc.id}`)
+  const heroRow = card.locator('li', { hasText: 'hero' })
+  await expect(heroRow).toContainText('Changed')
+  await expect(heroRow).toContainText('A punchier hero')
+  await expect(heroRow).toContainText('(heading)')
+  await expect(card.locator('li', { hasText: 'cta' })).toContainText('Unchanged')
+
+  await card.getByRole('button', { name: 'Approve' }).click()
+  await expect(page.getByText('Done — the hero is updated.')).toBeVisible()
+
+  const resumed = chatBodies[1].messages.at(-1)!.parts.find((part) => part.type === 'tool-apply_proposal')
+  expect(resumed).toMatchObject({ approval: { approved: true }, state: 'approval-responded' })
+})

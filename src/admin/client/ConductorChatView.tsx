@@ -12,7 +12,8 @@ import remarkGfm from 'remark-gfm'
 
 import type { Activity } from './chatState.js'
 
-import { CHAT_ENDPOINT_PATH, UPLOAD_ENDPOINT_PATH } from '../../constants.js'
+import { CHAT_ENDPOINT_PATH, PREVIEW_ENDPOINT_PATH, UPLOAD_ENDPOINT_PATH } from '../../constants.js'
+import { ApprovalCard } from './ApprovalCard.js'
 import { describeChatError } from './chatErrorCopy.js'
 import {
   getActivity,
@@ -101,9 +102,11 @@ const ErrorPanel = ({ error, settingsUrl }: { error: Error; settingsUrl: string 
 const MessagePart = ({
   onRespond,
   part,
+  previewUrl,
 }: {
   onRespond: (id: string, approved: boolean) => void
   part: UIMessage['parts'][number]
+  previewUrl: string
 }) => {
   if (part.type === 'text') {
     return (
@@ -130,6 +133,17 @@ const MessagePart = ({
     )
   }
 
+  if (isApprovalRequest(part)) {
+    return (
+      <ApprovalCard
+        approvalId={part.approval.id}
+        input={(part.input ?? {}) as Parameters<typeof ApprovalCard>[0]['input']}
+        onRespond={onRespond}
+        previewUrl={previewUrl}
+      />
+    )
+  }
+
   if (isToolPart(part)) {
     const state = 'state' in part ? part.state : undefined
     const hasDetails = ('output' in part && part.output != null) || ('errorText' in part && Boolean(part.errorText))
@@ -151,17 +165,6 @@ const MessagePart = ({
             <p className={styles.toolMeta}>No details yet.</p>
           )}
         </details>
-        {isApprovalRequest(part) && (
-          <div style={{ marginTop: 8 }}>
-            <p>This will write to the database. Apply it?</p>
-            <button onClick={() => onRespond(part.approval.id, true)} type="button">
-              Approve
-            </button>{' '}
-            <button onClick={() => onRespond(part.approval.id, false)} type="button">
-              Reject
-            </button>
-          </div>
-        )}
       </div>
     )
   }
@@ -178,6 +181,7 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
   const api = config.routes.api
+  const previewUrl = `${api}${PREVIEW_ENDPOINT_PATH}`
   const settingsUrl = `${config.routes.admin}/globals/ai-conductor-settings`
 
   // "Ask AI Conductor" on an edit view opens this screen with ?collection=&id= — send that along
@@ -348,6 +352,7 @@ export const ConductorChatView: React.FC<{ debugMode?: boolean }> = ({ debugMode
                       key={index}
                       onRespond={(approvalId, approved) => void addToolApprovalResponse({ id: approvalId, approved })}
                       part={part}
+                      previewUrl={previewUrl}
                     />
                   ))}
                 </div>

@@ -4,9 +4,16 @@ import type { ModelConfig } from './agent/provider.js'
 import type { BlockDocsOption } from './tools/blockMetadata.js'
 
 import { createChatEndpointHandler } from './agent/chatEndpoint.js'
+import { createPreviewEndpointHandler } from './agent/previewEndpoint.js'
 import { createUploadEndpointHandler } from './agent/uploadEndpoint.js'
 import { buildConversationsCollection } from './collections/conversations.js'
-import { CHAT_ENDPOINT_PATH, CHAT_VIEW_PATH, MCP_ENDPOINT_PATH, UPLOAD_ENDPOINT_PATH } from './constants.js'
+import {
+  CHAT_ENDPOINT_PATH,
+  CHAT_VIEW_PATH,
+  MCP_ENDPOINT_PATH,
+  PREVIEW_ENDPOINT_PATH,
+  UPLOAD_ENDPOINT_PATH,
+} from './constants.js'
 import { buildSettingsGlobal } from './globals/settings.js'
 import { createMcpEndpointHandler } from './mcp/endpoint.js'
 import { discoverCollections } from './tools/schema.js'
@@ -36,7 +43,13 @@ export type PayloadAiConductorConfig = {
   settingsAccess?: Access
 }
 
-export { CHAT_ENDPOINT_PATH, CHAT_VIEW_PATH, MCP_ENDPOINT_PATH, UPLOAD_ENDPOINT_PATH } from './constants.js'
+export {
+  CHAT_ENDPOINT_PATH,
+  CHAT_VIEW_PATH,
+  MCP_ENDPOINT_PATH,
+  PREVIEW_ENDPOINT_PATH,
+  UPLOAD_ENDPOINT_PATH,
+} from './constants.js'
 
 export const payloadAiConductor =
   (pluginOptions: PayloadAiConductorConfig = {}) =>
@@ -63,6 +76,7 @@ export const payloadAiConductor =
     const mcpHandler = createMcpEndpointHandler(pluginOptions)
     const chatHandler = createChatEndpointHandler(pluginOptions)
     const uploadHandler = createUploadEndpointHandler()
+    const previewHandler = createPreviewEndpointHandler(pluginOptions)
 
     config.endpoints.push(
       { handler: mcpHandler, method: 'get', path: MCP_ENDPOINT_PATH },
@@ -70,6 +84,7 @@ export const payloadAiConductor =
       { handler: mcpHandler, method: 'delete', path: MCP_ENDPOINT_PATH },
       { handler: chatHandler, method: 'post', path: CHAT_ENDPOINT_PATH },
       { handler: uploadHandler, method: 'post', path: UPLOAD_ENDPOINT_PATH },
+      { handler: previewHandler, method: 'post', path: PREVIEW_ENDPOINT_PATH },
     )
 
     if (!config.admin) {

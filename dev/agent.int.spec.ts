@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 
 import { buildAgentTools } from '../src/agent/tools.js'
 import { buildSystemPrompt, createChatEndpointHandler, SYSTEM_PROMPT } from '../src/agent/chatEndpoint.js'
+import { createPreviewEndpointHandler } from '../src/agent/previewEndpoint.js'
 import { devUser } from './helpers/credentials.js'
 
 let payload: Payload
@@ -208,5 +209,47 @@ describe('chat endpoint', () => {
     expect(systemPrompts[0]).toContain('get_document')
     expect(systemPrompts[1]).toBe(SYSTEM_PROMPT)
     expect(systemPrompts[2]).toBe(buildSystemPrompt({ collection: 'pages' }))
+  })
+})
+
+describe('preview endpoint (approval card)', () => {
+  const previewRequest = (body: unknown, authed = true) => {
+    const req = new Request('http://localhost:3000/api/plugin/ai-conductor/preview', {
+      body: JSON.stringify(body),
+      method: 'POST',
+    }) as unknown as Parameters<ReturnType<typeof createPreviewEndpointHandler>>[0]
+    req.payload = payload
+    req.user = authed ? user : null
+    req.locale = undefined
+    return req
+  }
+
+  test('describes what a pending update would change, without writing it', async () => {
+    const page = await payload.create({
+      collection: 'pages',
+      data: { title: 'Preview Me', slug: 'preview-me', layout: [{ blockType: 'hero', heading: 'Before' }] },
+    })
+    const heroId = (page.layout as Array<{ id: string }>)[0].id
+    const handler = createPreviewEndpointHandler({ collections: ['pages'] })
+
+    const res = await handler(
+      previewRequest({
+        id: page.id,
+        collection: 'pages',
+        operations: [{ blockId: heroId, data: { heading: 'After' }, op: 'update' }],
+      }),
+    )
+    expect(await res.json()).toMatchObject({
+      changes: { blocks: [{ field: 'layout', items: [{ changedFields: ['heading'], label: 'After', status: 'updated' }] }], mode: 'update' },
+      valid: true,
+    })
+    const stored = await payload.findByID({ id: page.id, collection: 'pages' })
+    expect((stored.layout as Array<{ heading: string }>)[0].heading).toBe('Before')
+  })
+
+  test('refuses anonymous callers and collections outside the allow-list', async () => {
+    const handler = createPreviewEndpointHandler({ collections: ['pages'] })
+    expect((await handler(previewRequest({ collection: 'pages' }, false))).status).toBe(401)
+    expect((await handler(previewRequest({ collection: 'media' }))).status).toBe(400)
   })
 })

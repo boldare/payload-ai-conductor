@@ -222,7 +222,10 @@ describe('validateProposal — required fields, row limits and unknown keys', ()
       { user },
     )
 
-    expect(result).toMatchObject({ valid: true })
+    expect(result).toMatchObject({ valid: true, changes: { mode: 'update' } })
+    if (result.valid) {
+      expect(result.changes.fields).toEqual([{ after: 'Renamed', before: 'Stored', field: 'title' }])
+    }
   })
 
   test('an update still cannot blank out a required field', async () => {
@@ -293,6 +296,8 @@ describe('editing existing documents', () => {
     }
     expect(layoutOf(result.doc).map((block) => block.id)).toEqual([hero.id, testimonial.id, cta.id])
     expect(layoutOf(result.doc)[0].heading).toBe('New hero')
+    expect(result.changes.blocks[0].items.map((item) => item.status)).toEqual(['updated', 'unchanged', 'unchanged'])
+    expect(result.changes.blocks[0].items[0].changedFields).toEqual(['heading'])
   })
 
   test('insert, move and remove operations address blocks by id', async () => {
@@ -317,7 +322,7 @@ describe('editing existing documents', () => {
       return
     }
     expect(layoutOf(result.doc).map((block) => block.blockType)).toEqual(['cta', 'hero', 'grid'])
-    expect(layoutOf(result.doc).map((block) => block.id)).not.toContain(testimonial.id)
+    expect(result.changes.blocks[0].removed).toEqual([{ blockType: 'testimonial', id: testimonial.id, label: 'Lovely' }])
   })
 
   test('sending a single block as the whole layout on update is refused, not a silent wipe', async () => {

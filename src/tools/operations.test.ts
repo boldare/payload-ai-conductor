@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { applyBlockOperations } from './operations.js'
+import { applyBlockOperations, describeChanges, previewValue } from './operations.js'
 
 const page = () => ({
   layout: [
@@ -73,5 +73,58 @@ describe('applyBlockOperations', () => {
     )
     expect(result.data).toEqual({ hero: { layout: [] } })
     expect(result.removedIds.get('hero.layout')).toEqual(new Set(['x']))
+  })
+})
+
+describe('describeChanges', () => {
+  test('reports added, updated, moved and removed blocks plus changed fields', () => {
+    const before = {
+      layout: [
+        { id: 'a', blockType: 'hero', heading: 'Hero' },
+        { id: 'b', blockType: 'cta', heading: 'CTA' },
+        { id: 'c', blockType: 'grid', title: 'Grid' },
+      ],
+      title: 'Home',
+    }
+    const after = {
+      layout: [
+        { id: 'b', blockType: 'cta', heading: 'CTA' },
+        { blockType: 'testimonial', quote: 'Great' },
+        { id: 'a', blockType: 'hero', heading: 'New hero' },
+      ],
+      title: 'Homepage',
+    }
+
+    expect(describeChanges(before, after, ['layout'])).toEqual({
+      blocks: [
+        {
+          field: 'layout',
+          items: [
+            { id: 'b', blockType: 'cta', label: 'CTA', moved: true, status: 'unchanged' },
+            { id: undefined, blockType: 'testimonial', label: 'Great', status: 'added' },
+            { id: 'a', blockType: 'hero', changedFields: ['heading'], label: 'New hero', moved: true, status: 'updated' },
+          ],
+          removed: [{ id: 'c', blockType: 'grid', label: 'Grid' }],
+        },
+      ],
+      fields: [{ after: 'Homepage', before: 'Home', field: 'title' }],
+      mode: 'update',
+    })
+  })
+
+  test('on create, lists every non-empty field and every block as added', () => {
+    const summary = describeChanges(null, { slug: 'x', layout: [{ blockType: 'hero', heading: 'Hi' }], title: '' }, ['layout'])
+    expect(summary.mode).toBe('create')
+    expect(summary.fields).toEqual([{ after: 'x', field: 'slug' }])
+    expect(summary.blocks[0].items).toEqual([{ id: undefined, blockType: 'hero', label: 'Hi', status: 'added' }])
+  })
+})
+
+describe('previewValue', () => {
+  test('summarizes rich text as plain text and arrays by length', () => {
+    const richText = { root: { children: [{ children: [{ text: 'Hello' }, { text: 'world' }] }] } }
+    expect(previewValue(richText)).toBe('Hello world')
+    expect(previewValue([1, 2])).toBe('[2 items]')
+    expect(previewValue('x'.repeat(200))).toHaveLength(120)
   })
 })

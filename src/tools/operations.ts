@@ -222,3 +222,137 @@ export const applyBlockOperations = (
 
   return { data, issues, removedIds, touchedPaths }
 }
+
+export type BlockChange = {
+  blockType: string
+  /** Fields whose value differs from the stored block (updates only). */
+  changedFields?: string[]
+  id?: string
+  label?: string
+  /** True when a kept block ends up in a different position relative to the other kept blocks. */
+  moved?: boolean
+  status: 'added' | 'unchanged' | 'updated'
+}
+
+export type ChangeSummary = {
+  blocks: Array<{
+    field: string
+    items: BlockChange[]
+    removed: Array<Pick<BlockChange, 'blockType' | 'id' | 'label'>>
+  }>
+  fields: Array<{ after: unknown; before?: unknown; field: string }>
+  mode: 'create' | 'update'
+}
+
+const lexicalText = (node: unknown): string => {
+  if (typeof node !== 'object' || node === null) {
+    return ''
+  }
+  const record = node as { children?: unknown[]; text?: unknown }
+  const own = typeof record.text === 'string' ? record.text : ''
+  const children = Array.isArray(record.children) ? record.children.map(lexicalText).filter(Boolean).join(' ') : ''
+  return [own, children].filter(Boolean).join(' ')
+}
+
+/** A compact, JSON-friendly preview of a field value for change summaries. */
+export const previewValue = (value: unknown): unknown => {
+  if (typeof value === 'string') {
+    return truncate(value, 120)
+  }
+  if (Array.isArray(value)) {
+    return `[${value.length} item${value.length === 1 ? '' : 's'}]`
+  }
+  if (typeof value === 'object' && value !== null) {
+    if ('root' in value) {
+      return truncate(lexicalText((value as { root: unknown }).root) || '(rich text)', 120)
+    }
+    return '{…}'
+  }
+  return value
+}
+
+const isEmpty = (value: unknown): boolean =>
+  value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)
+
+const stableJson = (value: unknown): string => JSON.stringify(value ?? null)
+
+const toBlockChange = (block: BlockData, status: BlockChange['status']): BlockChange => ({
+  id: idOf(block.id),
+  blockType: show(block.blockType),
+  label: blockLabel(block),
+  status,
+})
+
+/** What a proposal would change, block by block — shown to the model and on the approval card. */
+export const describeChanges = (
+  before: null | Record<string, unknown>,
+  after: Record<string, unknown>,
+  blocksFieldPaths: string[],
+): ChangeSummary => {
+  // Blocks get their own per-block summary below, so blank them out of the plain field comparison.
+  const withoutBlocks = (data: Record<string, unknown>) => {
+    const copy = structuredClone(data)
+    for (const path of blocksFieldPaths) {
+      setAtPath(copy, path, undefined)
+    }
+    return copy
+  }
+  const beforeRest = before ? withoutBlocks(before) : {}
+  const afterRest = withoutBlocks(after)
+
+  const fields: ChangeSummary['fields'] = []
+  for (const key of new Set([...Object.keys(afterRest), ...Object.keys(beforeRest)])) {
+    const prev = beforeRest[key]
+    const next = afterRest[key]
+    if (before ? stableJson(prev) === stableJson(next) : isEmpty(next)) {
+      continue
+    }
+    fields.push(before ? { after: previewValue(next), before: previewValue(prev), field: key } : { after: previewValue(next), field: key })
+  }
+
+  const blocks: ChangeSummary['blocks'] = blocksFieldPaths
+    .map((path) => {
+      const prevBlocks = before ? blocksAt(before, path) : []
+      const nextBlocks = blocksAt(after, path)
+      const prevById = new Map(
+        prevBlocks.flatMap((b): Array<[string, BlockData]> => {
+          const id = idOf(b.id)
+          return id ? [[id, b]] : []
+        }),
+      )
+      const nextIds = new Set(blockIds(nextBlocks))
+      const keptBefore = blockIds(prevBlocks).filter((id) => nextIds.has(id))
+      const keptAfter = blockIds(nextBlocks).filter((id) => prevById.has(id))
+
+      const items = nextBlocks.map((block): BlockChange => {
+        const id = idOf(block.id)
+        const prev = id ? prevById.get(id) : undefined
+        if (!id || !prev) {
+          return toBlockChange(block, 'added')
+        }
+        const changedFields = [...new Set([...Object.keys(block), ...Object.keys(prev)])].filter(
+          (key) => key !== 'id' && stableJson(prev[key]) !== stableJson(block[key]),
+        )
+        const moved = keptBefore.indexOf(id) !== keptAfter.indexOf(id)
+        return {
+          ...toBlockChange(block, changedFields.length > 0 ? 'updated' : 'unchanged'),
+          ...(changedFields.length > 0 && { changedFields }),
+          ...(moved && { moved }),
+        }
+      })
+      const removed = prevBlocks
+        .filter((block) => {
+          const id = idOf(block.id)
+          return id !== undefined && !nextIds.has(id)
+        })
+        .map((block) => {
+          const { id, blockType, label } = toBlockChange(block, 'unchanged')
+          return { id, blockType, label }
+        })
+
+      return { field: path, items, removed }
+    })
+    .filter((entry) => entry.items.length > 0 || entry.removed.length > 0)
+
+  return { blocks, fields, mode: before ? 'update' : 'create' }
+}

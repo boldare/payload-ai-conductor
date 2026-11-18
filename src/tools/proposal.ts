@@ -1,8 +1,8 @@
 import type { Payload, TypedUser } from 'payload'
 
-import type { BlockOperation } from './operations.js'
+import type { BlockOperation, ChangeSummary } from './operations.js'
 
-import { applyBlockOperations, blockIds, describeBlock, getAtPath, idOf } from './operations.js'
+import { applyBlockOperations, blockIds, describeBlock, describeChanges, getAtPath, idOf } from './operations.js'
 import { asCollectionSlug, asLocale, contentFields, findBlocksFieldPaths, pickContentData } from './schema.js'
 import { collectFieldsRefs, validateFieldsData } from './validate.js'
 
@@ -18,11 +18,12 @@ export type ProposalArgs = {
   target: ProposalTarget
 }
 
-export type ValidationResult = { issues: string[]; valid: false } | { valid: true }
+export type ValidationResult = { changes: ChangeSummary; valid: true } | { issues: string[]; valid: false }
 
-export type ApplyResult = { doc: unknown; success: true } | { issues: string[]; success: false }
+export type ApplyResult = { changes: ChangeSummary; doc: unknown; success: true } | { issues: string[]; success: false }
 
 type ResolvedProposal = {
+  changes: ChangeSummary
   /** Exactly what gets passed to payload.create/update. */
   writeData: Record<string, unknown>
 }
@@ -149,7 +150,7 @@ const resolveProposal = async (
     : new Set(Object.keys(next))
   const writeData = Object.fromEntries([...writeKeys].map((key) => [key, next[key]]))
 
-  return { resolved: { writeData } }
+  return { resolved: { changes: describeChanges(current, next, blocksFieldPaths), writeData } }
 }
 
 export const validateProposal = async (
@@ -161,7 +162,7 @@ export const validateProposal = async (
   if ('issues' in result) {
     return { issues: result.issues, valid: false }
   }
-  return { valid: true }
+  return { changes: result.resolved.changes, valid: true }
 }
 
 export const proposeLayout = validateProposal
@@ -177,7 +178,7 @@ export const applyProposal = async (
     return { issues: result.issues, success: false }
   }
 
-  const { writeData } = result.resolved
+  const { changes, writeData } = result.resolved
   const draft = supportsDrafts(payload, args.target.collection)
   const collection = asCollectionSlug(args.target.collection)
   const locale = asLocale(context.locale)
@@ -202,7 +203,7 @@ export const applyProposal = async (
           user: context.user,
         })
 
-    return { doc, success: true }
+    return { changes, doc, success: true }
   } catch (error) {
     return { issues: [error instanceof Error ? error.message : 'Failed to write proposal'], success: false }
   }

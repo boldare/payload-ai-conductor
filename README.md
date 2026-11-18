@@ -135,7 +135,8 @@ or a file just for context.
 then proposes the edit with that document's `id`: changed top-level fields in `data`, and block changes as
 `operations` — `update`, `insert`, `remove` or `move` a block by id — so blocks it isn't touching stay exactly as they
 are. A blocks array sent in `data` on an update replaces the stored one, and is rejected if it would silently drop
-blocks it doesn't mention.
+blocks it doesn't mention. The approval card shows what will change: create vs update, field before/after, and each
+block as new, changed (with the fields), moved or removed.
 
 **Over MCP** — point any MCP client at your site, authenticated as a restricted (non-admin) Payload user:
 
