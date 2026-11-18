@@ -24,6 +24,14 @@ describe('buildSettingsGlobal', () => {
   })
 })
 
+describe('settings global presentation', () => {
+  test('shows as "AI Conductor Settings" in an "AI Conductor" nav group', () => {
+    const global = buildSettingsGlobal(['pages'])
+    expect(global.label).toBe('AI Conductor Settings')
+    expect(global.admin?.group).toBe('AI Conductor')
+  })
+})
+
 describe('encryptApiKey', () => {
   const run = (value: unknown) =>
     encryptApiKey({ req: { payload: { encrypt: (v: string) => `enc(${v})` } }, value } as unknown as FieldHookArgs)

@@ -6,15 +6,13 @@ import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai
 import type { PayloadAiConductorConfig } from '../index.js'
 import type { ModelConfig } from './provider.js'
 
-import { getSettings, resolveAllowedCollections, resolveModelConfigFromSettings } from '../globals/settings.js'
+import { DEFAULT_MAX_STEPS, getSettings, resolveAllowedCollections, resolveModelConfigFromSettings } from '../globals/settings.js'
 import { serializeChatError } from '../shared/chatErrors.js'
 import { recordConversationMessages } from '../tools/audit.js'
 import { discoverCollections, isCollectionAllowed } from '../tools/schema.js'
 import { classifyChatError } from './errors.js'
 import { buildLanguageModel, resolveModelConfigFromEnv } from './provider.js'
 import { buildAgentTools } from './tools.js'
-
-const DEFAULT_MAX_STEPS = 12
 
 export const SYSTEM_PROMPT = [
   'You are AI Conductor, an assistant that composes and edits pages using the site’s own block library.',

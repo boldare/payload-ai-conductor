@@ -173,7 +173,8 @@ Exposed tools: `list_collections`, `get_collection_schema`, `list_blocks`, `get_
 - Proposals are validated *before* you approve them: required fields (against the merged document on update), array
   and blocks `minRows`/`maxRows`, number/text limits, unknown fields and block types, and that every referenced
   document exists and is readable by you.
-- `maxSteps` / `timeoutMs` bound how long and how far a single turn can run.
+- `maxSteps` / `timeoutMs` bound how long and how far a single turn can run. `maxSteps` defaults to 25 — composing a
+  page of 6+ blocks with schema lookups typically takes 15–25 steps.
 - Debug mode is off by default; a pending approval is always shown regardless of that setting.
 
 ## Plugin options
@@ -183,7 +184,7 @@ Exposed tools: `list_collections`, `get_collection_schema`, `list_blocks`, `get_
 | `collections`    | `string[]`                                       | Restrict AI Conductor to specific collections. Defaults to every `blocks`-field collection. |
 | `blocksDir`      | `string`                                         | Directory to look up `<slug>.md` docs by convention.                               |
 | `blockDocs`      | `Array<{ slug: string; path: string }>`          | Explicit markdown doc paths for specific block slugs.                              |
-| `maxSteps`       | `number`                                         | Default max agent steps per chat turn (overridable from Settings).                 |
+| `maxSteps`       | `number`                                         | Default max agent steps per chat turn (default 25; overridable from Settings).     |
 | `getModelConfig` | `(req) => ModelConfig \| Promise<ModelConfig>`   | Fully custom BYOK resolution, taking priority over Settings and env vars.           |
 | `settingsAccess` | `Access`                                         | Who can view/edit the Settings screen (and its decrypted API key). Defaults to Payload's own default — any logged-in user — so set this for any real deployment. |
 | `disabled`       | `boolean`                                        | Disable the plugin without removing it from your config.                           |

@@ -32,7 +32,10 @@ export type PayloadAiConductorConfig = {
    * `AI_CONDUCTOR_PROVIDER`/`AI_CONDUCTOR_API_KEY`/`AI_CONDUCTOR_MODEL` env vars if that's unset.
    */
   getModelConfig?: (req: PayloadRequest) => ModelConfig | Promise<ModelConfig>
-  /** Maximum number of agent tool-call steps per chat turn, as a runaway-loop guardrail. */
+  /**
+   * Maximum number of agent tool-call steps per chat turn, as a runaway-loop guardrail. Defaults to
+   * 25; the Settings screen's value takes priority when set.
+   */
   maxSteps?: number
   /**
    * Restrict who can view/edit the `ai-conductor-settings` global, which holds your decrypted BYOK

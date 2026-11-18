@@ -59,6 +59,31 @@ describe('recordAppliedProposal', () => {
   })
 })
 
+describe('conversations access', () => {
+  test('a user can delete their own conversation but not someone else’s', async () => {
+    const other = (await payload.create({
+      collection: 'users',
+      data: { email: 'other-conversations@example.com', password: 'test' },
+    })) as TypedUser
+
+    await recordConversationMessages(payload, [{ role: 'user', text: 'mine' }], { conversationId: 'owned-by-dev', user })
+    const { docs } = await payload.find({
+      collection: CONVERSATIONS_COLLECTION_SLUG,
+      overrideAccess: true,
+      where: { conversationId: { equals: 'owned-by-dev' } },
+    })
+    const conversationId = docs[0].id
+
+    await expect(
+      payload.delete({ id: conversationId, collection: CONVERSATIONS_COLLECTION_SLUG, overrideAccess: false, user: other }),
+    ).rejects.toThrow()
+    expect((await payload.count({ collection: CONVERSATIONS_COLLECTION_SLUG, overrideAccess: true, where: { id: { equals: conversationId } } })).totalDocs).toBe(1)
+
+    await payload.delete({ id: conversationId, collection: CONVERSATIONS_COLLECTION_SLUG, overrideAccess: false, user })
+    expect((await payload.count({ collection: CONVERSATIONS_COLLECTION_SLUG, overrideAccess: true, where: { id: { equals: conversationId } } })).totalDocs).toBe(0)
+  })
+})
+
 describe('recordConversationMessages', () => {
   test('creates then updates the same conversation record for a given conversationId', async () => {
     const conversationId = 'conversation-messages-test'
