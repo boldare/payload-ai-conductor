@@ -65,7 +65,7 @@ export const buildSettingsGlobal = (collectionOptions: string[], access?: Access
     {
       name: 'model',
       type: 'text',
-      admin: { description: 'e.g. claude-sonnet-5, gpt-4o' },
+      admin: { description: 'Model id, e.g. claude-sonnet-5-5, claude-opus-5-5, gpt-5' },
     },
     {
       name: 'apiKey',

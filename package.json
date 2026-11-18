@@ -68,18 +68,18 @@
     "test:pack": "node scripts/pack-smoke.mjs"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.12",
-    "@ai-sdk/openai": "^4.0.11",
-    "@ai-sdk/react": "^4.0.23",
+    "@ai-sdk/anthropic": "^4.0.96",
+    "@ai-sdk/openai": "^4.0.108",
+    "@ai-sdk/react": "^4.0.166",
     "@modelcontextprotocol/server": "2.0.0-beta.3",
-    "ai": "^7.0.22",
+    "ai": "^7.0.162",
     "gray-matter": "^4.0.3",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "zod": "^4.2.0"
   },
   "devDependencies": {
-    "@ai-sdk/provider": "4.0.3",
+    "@ai-sdk/provider": "4.0.35",
     "@eslint/eslintrc": "^3.2.0",
     "@payloadcms/db-sqlite": "3.86.0",
     "@payloadcms/eslint-config": "3.28.0",

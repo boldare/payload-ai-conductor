@@ -205,4 +205,92 @@ describe('tool approval flow', () => {
     })
     expect(afterApproval.totalDocs).toBe(1)
   })
+
+  // Claude Opus/Sonnet 5.5 return between-tool progress notes as `thinking` blocks, and a thinking
+  // block is only valid replayed unchanged, in the conversation that produced it. The approval flow
+  // ends one HTTP request and resumes in another, so every block — text and signature — has to
+  // survive the trip through UI messages and back into the next model call.
+  test('thinking blocks (progress updates and empty ones) survive the approval round trip unchanged', async () => {
+    const usage = {
+      inputTokens: { cacheRead: 0, cacheWrite: 0, noCache: 10, total: 10 },
+      outputTokens: { reasoning: 0, text: 5, total: 5 },
+    }
+    const prompts: unknown[] = []
+    let callCount = 0
+    const mockModel = new MockLanguageModelV4({
+      doStream: async (options) => {
+        callCount += 1
+        prompts.push(options.prompt)
+        const streamParts: LanguageModelV4StreamPart[] =
+          callCount === 1
+            ? [
+                { type: 'stream-start', warnings: [] },
+                { type: 'reasoning-start', id: 'r0' },
+                { type: 'reasoning-delta', delta: 'Checking the block library…', id: 'r0' },
+                { type: 'reasoning-delta', delta: '', id: 'r0', providerMetadata: { anthropic: { signature: 'sig-progress' } } },
+                { type: 'reasoning-end', id: 'r0' },
+                { type: 'reasoning-start', id: 'r1' },
+                { type: 'reasoning-delta', delta: '', id: 'r1', providerMetadata: { anthropic: { signature: 'sig-hidden' } } },
+                { type: 'reasoning-end', id: 'r1' },
+                {
+                  type: 'tool-call',
+                  input: JSON.stringify({
+                    collection: 'pages',
+                    data: { title: 'Thinking', slug: 'thinking-roundtrip', layout: [{ blockType: 'hero', heading: 'Hi' }] },
+                  }),
+                  toolCallId: 'call_t',
+                  toolName: 'apply_proposal',
+                },
+                { type: 'finish', finishReason: { raw: undefined, unified: 'tool-calls' }, usage },
+              ]
+            : [
+                { type: 'stream-start', warnings: [] },
+                { type: 'text-start', id: 't' },
+                { type: 'text-delta', delta: 'Done!', id: 't' },
+                { type: 'text-end', id: 't' },
+                { type: 'finish', finishReason: { raw: undefined, unified: 'stop' }, usage },
+              ]
+        return { stream: convertArrayToReadableStream(streamParts) }
+      },
+    })
+
+    const handler = createChatEndpointHandler(
+      { collections: ['pages'], getModelConfig: () => ({ apiKey: 'test', model: 'test', provider: 'anthropic' }) },
+      { buildLanguageModel: () => mockModel },
+    )
+    const userMessage = { id: 'u1', parts: [{ text: 'create it', type: 'text' as const }], role: 'user' as const }
+
+    const req1 = makeRequest({ id: 'conv_thinking', messages: [userMessage] })
+    req1.payload = payload
+    req1.user = user
+    req1.locale = undefined
+    const message1 = await reconstructMessage(await handler(req1))
+
+    const reasoningParts = message1.parts.filter((part) => part.type === 'reasoning')
+    expect(reasoningParts.map((part) => part.text)).toEqual(['Checking the block library…', ''])
+
+    const approved: UIMessage = {
+      ...message1,
+      parts: message1.parts.map((part) =>
+        part.type === 'tool-apply_proposal'
+          ? ({ ...part, approval: { ...part.approval, approved: true }, state: 'approval-responded' } as UIMessage['parts'][number])
+          : part,
+      ),
+    }
+    const req2 = makeRequest({ id: 'conv_thinking', messages: [userMessage, approved] })
+    req2.payload = payload
+    req2.user = user
+    req2.locale = undefined
+    await reconstructMessage(await handler(req2), approved)
+
+    const resumedPrompt = prompts[1] as Array<{ content: unknown; role: string }>
+    const assistant = resumedPrompt.find((message) => message.role === 'assistant')
+    const content = assistant?.content as Array<{ providerOptions?: unknown; text?: string; type: string }>
+    expect(content.map((part) => part.type)).toEqual(['reasoning', 'reasoning', 'tool-call'])
+    expect(content[0]).toMatchObject({
+      providerOptions: { anthropic: { signature: 'sig-progress' } },
+      text: 'Checking the block library…',
+    })
+    expect(content[1]).toMatchObject({ providerOptions: { anthropic: { signature: 'sig-hidden' } }, text: '' })
+  })
 })

@@ -74,10 +74,13 @@ pnpm payload generate:types
 ```sh
 AI_CONDUCTOR_PROVIDER=anthropic
 AI_CONDUCTOR_API_KEY=sk-ant-...
-AI_CONDUCTOR_MODEL=claude-sonnet-5
+AI_CONDUCTOR_MODEL=claude-sonnet-5-5
 ```
 
 Open **AI Conductor** in your admin nav — you're chatting.
+
+> On Claude Sonnet 5.5 / Opus 5.5 the plugin asks the API for the model's progress updates
+> (`thinking.display: "updates"`), so the chat shows what the agent is doing during long tool loops.
 
 > **Lock down the Settings screen.** That screen holds your decrypted API key. Without a `settingsAccess`
 > rule, Payload's own default applies — *any logged-in user*, not just admins:
@@ -195,7 +198,8 @@ pnpm test:pack   # npm pack → install the tarball in a clean project → impor
 
 `dev/eval.int.spec.ts` runs the real agent loop against a live model with an LLM-judge rubric. It needs
 `AI_CONDUCTOR_PROVIDER`/`AI_CONDUCTOR_API_KEY`/`AI_CONDUCTOR_MODEL` and skips itself otherwise, so the rest of the
-suite stays green without a key.
+suite stays green without a key. Add `AI_CONDUCTOR_EVAL_55=1` (with an Anthropic key) to also run the full
+propose → approve → apply chat flow on `claude-sonnet-5-5` and `claude-opus-5-5`.
 
 ## License
 
