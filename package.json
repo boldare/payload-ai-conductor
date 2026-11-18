@@ -1,6 +1,6 @@
 {
   "name": "payload-ai-conductor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Compose and edit Payload CMS pages through a chat agent grounded in your block library — with an in-panel BYOK chat and a standalone MCP server, both backed by the same propose-then-approve tool layer.",
   "keywords": [
     "payload",
